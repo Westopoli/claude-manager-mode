@@ -164,6 +164,8 @@ For each brief, write its `test_files` path(s) with a failing test that exercise
 # spec: <spec_path>::<section>::AC-<N>
 ```
 
+SQL test files (pgTAP, etc.) may use `--` instead of `#`: `-- spec: <spec_path>::<section>::AC-<N>`.
+
 Example: `# spec: specs/cache.md::Acceptance criteria::AC-3`.
 
 This header is the leaf's traceability anchor. Phase 3's invariant check greps for it; missing or malformed header → audit FAIL.
@@ -187,7 +189,7 @@ The script reads `.claude-swarm.toml`, parses every `leaf-*.md` in `briefs_dir`,
 - **non-overlap** — no two same-wave briefs name the same file; no brief touches parent-owned globs.
 - **no-design** — `spec_lines` concrete; `contract_imports` resolve in the locked contract; no ambiguous verbs in task prose.
 - **sizing** — `impl_line_budget` ≤ `max_impl_lines`; `test_assertion_budget` ≤ `max_test_assertions`.
-- **spec-link** — every brief-declared test file path starts with `# spec: ...::AC-N` header.
+- **spec-link** — every brief-declared test file path starts with `# spec: ...::AC-N` header (or `-- spec: ...::AC-N` for SQL).
 
 Exit 0 = all pass, exit 1 = findings, exit 2 = config error.
 
