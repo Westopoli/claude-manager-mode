@@ -50,6 +50,7 @@ DEFAULTS: dict[str, Any] = {
     "invariants": {
         "max_impl_lines": 200,
         "max_test_assertions": 20,
+        "max_brief_code_lines": 10,
         "ambiguous_verbs": [
             "decide", "choose", "design", "determine",
             "figure out", "resolve", "as appropriate",
@@ -269,11 +270,31 @@ def check_non_overlap(briefs: list[Brief], parent_owned: list[str]) -> list[Fail
 SPEC_LINES_RE = re.compile(r"^\d+-\d+$")
 
 
+FENCED_CODE_RE = re.compile(r"^[ \t]*```[^\n]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
+
+
+def _count_fenced_code_lines(body: str) -> int:
+    """Sum of non-blank lines inside all fenced code blocks in the brief body.
+
+    Used to detect parent-authored impl bodies pasted into the brief. Stub
+    signatures (a few lines of `def foo(...)` headers) stay under the budget;
+    full ready-to-paste implementations trip it.
+    """
+    total = 0
+    for m in FENCED_CODE_RE.finditer(body):
+        block = m.group(1)
+        for line in block.splitlines():
+            if line.strip():
+                total += 1
+    return total
+
+
 def check_no_design(
     briefs: list[Brief],
     root: Path,
     type_contract_path: str,
     ambiguous_verbs: list[str],
+    max_brief_code_lines: int,
 ) -> list[Failure]:
     fails: list[Failure] = []
     contract_symbols = _load_contract_symbols(root, type_contract_path)
@@ -301,6 +322,17 @@ def check_no_design(
                     f"task prose contains ambiguous verb `{m.group(0)}` — "
                     f"that delegates a design decision to the leaf"))
                 break  # one finding per brief is enough
+        # fenced code budget — brief must not embed ready-to-paste impl bodies.
+        # Stub signatures (≤ max) stay; full implementations trip and the leaf
+        # loses authorship. Shape-carriers (spec_lines, contract_imports,
+        # mirror-pointers in prose) replace embedded bodies.
+        code_lines = _count_fenced_code_lines(b.body)
+        if code_lines > max_brief_code_lines:
+            fails.append(Failure(b.leaf_id, "no-design",
+                f"brief embeds {code_lines} lines of fenced code (max "
+                f"{max_brief_code_lines}) — collapse to shape (spec_lines "
+                f"refs, contract_imports, stub signatures, mirror-pointers). "
+                f"Leaf authors the body."))
     return fails
 
 
@@ -406,6 +438,7 @@ def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
     rpt.failures.extend(check_no_design(
         rpt.briefs, root, cfg["type_contract_path"],
         cfg["invariants"]["ambiguous_verbs"],
+        int(cfg["invariants"]["max_brief_code_lines"]),
     ))
     rpt.failures.extend(check_sizing(rpt.briefs, cfg["invariants"]))
     rpt.failures.extend(check_spec_link(rpt.briefs, root))

@@ -66,7 +66,22 @@ test_assertion_budget: <int>
 
 <One-paragraph imperative description. Must reference spec_lines for any
 behavioral claim. Must not contain ambiguous verbs (decide, choose, design,
-determine, figure out, resolve, "as appropriate").>
+determine, figure out, resolve, "as appropriate").
+
+Must NOT contain ready-to-paste implementation bodies — the leaf authors the
+body. Permitted shape-carriers in the brief:
+  - `spec_lines` refs (cite line ranges in the spec file).
+  - `contract_imports` (named symbols the impl must use).
+  - Stub signatures (≤ `max_brief_code_lines` total lines across all fenced
+    code blocks — function headers, type aliases, SQL signatures only).
+  - Mirror-pointers in prose: "match the structure of `path/to/sibling.py`"
+    or "mirror the comment-header style of `004_families_realign.sql`".
+  - Invariant statements: "this function must be idempotent",
+    "must short-circuit on empty input", etc.
+
+Embedding a full implementation collapses the parallelism payoff: the parent
+absorbs leaf work and the leaf becomes a copy-paste courier. Audit blocks
+briefs whose fenced code exceeds `max_brief_code_lines`.>
 
 ## Acceptance
 
@@ -212,6 +227,7 @@ Never copy the parent-owned file into your impl as a workaround. Duplication is 
 | `codebase_preconditions` (optional) | Each `verify:` command exits 0. If task prose contains claim-words ("already", "in place", "exists as of", "previously added") without backing preconditions, Phase 3.1 heuristic-warns. |
 | `escalation_triggers` (optional) | Each `detect:` command (if present) is well-formed shell. Runtime check is Phase 6.5 G6. |
 | Task prose | No ambiguous verbs from the configured list. |
+| Task fenced code | Total non-blank lines across all fenced code blocks ≤ `max_brief_code_lines` (default 10). Stub signatures + mirror-pointer snippets allowed; full impl bodies blocked. Forces parent to encode shape, not authorship. |
 
 A brief that fails any of these checks blocks the entire decomposition. The parent restructures and re-emits before any leaf is spawned.
 
@@ -219,4 +235,4 @@ A brief that fails any of these checks blocks the entire decomposition. The pare
 
 ## Why this template
 
-The brief is the contract between parent and leaf. If the parent encodes the slice correctly here, the leaf has no surface on which to make a design decision. If the parent encodes it incorrectly, the audit catches it before the leaf gets to act on it. Both failure modes (toes-stepping, design-leak) reduce to malformed briefs; sizing is the third axis the budgets enforce.
+The brief is the contract between parent and leaf. If the parent encodes the slice correctly here, the leaf has no surface on which to make a **design** decision **but retains full authorship of the body.** Encoding *shape* — spec_lines refs, contract_imports, stub signatures, mirror-pointers, invariants — removes ambiguity without removing authorship. Encoding the *body* — pasting a ready-to-run implementation — removes authorship along with ambiguity, which collapses the parallelism payoff: parent absorbs leaf work, leaf becomes a copy-paste courier, the cascade pays the cost of decomposition for none of the leverage. If the parent encodes incorrectly (ambiguity OR over-specification), the audit catches it before any leaf spawns. Both failure modes (toes-stepping, design-leak) reduce to malformed briefs; sizing is the third axis the budgets enforce.

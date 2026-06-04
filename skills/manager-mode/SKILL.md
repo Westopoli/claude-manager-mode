@@ -148,6 +148,7 @@ Key brief rules:
 - `contract_imports`: only symbols present in the locked contract.
 - `do_not_edit`: every other same-wave brief's `impl_files` + parent-owned globs.
 - Task prose: imperative, no ambiguous verbs (decide / choose / design / determine / figure out / resolve / pick).
+- Task fenced code: total non-blank lines across all fenced blocks ≤ `max_brief_code_lines` (default 10). Stub signatures + mirror-pointer snippets only. **Do not embed ready-to-paste impl bodies — the leaf authors the body.** Use shape-carriers instead: `spec_lines` refs, `contract_imports`, mirror-pointers ("match the structure of `path/to/sibling.py`"), invariant statements. Embedding the body collapses parallelism — parent absorbs leaf work, leaf becomes a copy-paste courier. Audit blocks briefs that exceed the ceiling.
 - `impl_line_budget`, `test_assertion_budget`: from `.claude-swarm.toml`; tighten if you can.
 
 The brief's `## Task` section must instruct the leaf:
