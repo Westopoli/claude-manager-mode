@@ -493,6 +493,27 @@ enough to be confident otherwise. Passing tests only prove the code matches
 the test — they prove nothing about whether the test matches what the user
 actually asked for. That's your job to check.
 
+Your mandate is to actively TRY TO REFUTE the admission, not to confirm it
+looks fine. For each stage below, go in looking for the strongest reason
+this wave should NOT have been admitted — don't settle for "seems okay" as
+a default verdict. This matters because agreement-seeking review is a real,
+documented failure mode: in one published case, 80+ independent review
+agents — including dedicated adversarial reviewers — unanimously endorsed a
+vulnerability that didn't exist, because each one was implicitly checking
+"does this look plausible" rather than "can I prove this wrong." A single
+agent that actually tried to disprove the finding (ran the code, checked
+the real behavior) caught what the other 80 missed. You are that agent.
+Confirmation is not your default; it's a conclusion you have to earn by
+failing to find a problem after genuinely trying.
+
+Every finding you report — at any severity, 🔴/🟡/🔵/❓ — must cite the
+concrete evidence behind it: a quote from the code, the test assertion
+text, the spec line, or (if you can run one) an actual command/test output.
+"This looks wrong" is not a finding; "line N does X, which contradicts
+AC-3's requirement that Y" is. If you can't point to the specific evidence,
+you haven't finished checking — keep looking or downgrade to a ❓ question
+you flag as unverified, don't report it as a settled finding.
+
 Read .swarm/wave-<wave>.AUDIT-BRIEF.md first. Then work in three stages, in
 order:
 
@@ -516,8 +537,12 @@ Do not accept "the test passed" as evidence the AC is covered. Read what it
 actually asserts.
 
 STAGE C — Code quality.
-Read every admitted impl file. You are looking for what a senior engineer would
-flag in review, not just what breaks the test — the code passed its narrow test
+Read every admitted impl file **as a diff arriving with no explanation** —
+judge it on what it actually does, not on what its comments, docstrings, or
+variable names claim it does. A comment saying "this is safe because X" or
+"handles the edge case" is not evidence of anything; only the code's real
+behavior is. You are looking for what a senior engineer would flag in
+review, not just what breaks the test — the code passed its narrow test
 already, so a bug that survived is one the test doesn't exercise. Look for:
   - actual bugs / wrong behavior the umbrella test doesn't cover
   - inefficiency (needless O(n^2), repeated work, allocations in hot paths)
@@ -529,9 +554,10 @@ already, so a bug that survived is one the test doesn't exercise. Look for:
     real code review
 
 Report each stage separately, findings only, severity-tagged as usual
-(🔴 bug, 🟡 risk, 🔵 nit, ❓ question). If a stage is genuinely clean, say so
-in one line — don't manufacture findings to fill space, but don't let "it's
-probably fine" pass without having actually checked.
+(🔴 bug, 🟡 risk, 🔵 nit, ❓ question), each finding paired with the evidence
+that grounds it (see above). If a stage is genuinely clean, say so in one
+line — don't manufacture findings to fill space, but don't let "it's
+probably fine" pass without having actually checked and tried to refute.
 ```
 
 ### 8.3 Present findings, don't auto-revert
@@ -575,3 +601,16 @@ The leaf-count guardrail in Phase 2.2 (warn > 12, refuse > 16) reflects empirica
 When the spec genuinely needs more than 12 slices, break into sequential waves. Wave 1 admits, wave 2 picks up; cross-wave file edits are explicitly allowed (`wave:` field on the brief sequences them). One large feature, two clean waves of 8–10 leaves each, is materially safer than one wave of 18.
 
 The refusal at >16 is non-negotiable in this skill. If the user wants to push past it, that decision belongs upstream — re-scope the spec, not the gate.
+
+## Shard-based parallelism, for specs that outgrow one wave
+
+The 12/16 cap above is a ceiling on *one wave's* leaf count, not on how much work the cascade can do in parallel overall. A large, genuinely-decomposable spec (dozens of independent slices, no shared-file dependencies between groups of them) doesn't have to run those groups one sequential wave at a time — it can run several waves **concurrently**, each in its own isolated staging tree, the same way a large real-world multi-agent rewrite (64 concurrent Claude instances porting a 500K-line codebase, organized as 4 isolated worktrees of 16 agents each rather than one flat pool of 64) actually scaled: the ceiling on parallelism there wasn't the agents' reasoning quality, it was **write-collision on shared state** — agents running conflicting git commands against the same checkout. The fix was architectural isolation (separate worktrees, no cross-shard git operations), not a bigger flat pool.
+
+Manager-mode's equivalent shared state is `.swarm/pending/`, `post-review-log.md`, and the wave snapshot/sweep files — those are exactly what breaks if two waves try to run concurrently against the same paths. A **shard** is an isolated copy of that state:
+
+- Instead of one `.swarm/pending/leaf-NN/` staging tree, run N parallel staging trees: `.swarm/pending/shard-A/leaf-NN/`, `.swarm/pending/shard-B/leaf-NN/`, and so on — one per concurrent wave.
+- Each shard gets its own wave number, its own `post-review-log.md` entries (still one shared log file is fine since admission is still one-at-a-time per shard; the append-only format already tolerates interleaved waves), and its own `.swarm/wave-<wave>.snapshot.json` / `.SWEEP.md` / `.AUDIT.md`.
+- **No file overlap across shards, ever** — this is the same non-overlap invariant Phase 3 already enforces within one wave's briefs, just extended to hold across every shard running at the same time. Two shards racing to write the same file is exactly the collision this whole pattern exists to prevent; if the dependency map from Phase 2.1 can't guarantee that separation up front, don't shard — run sequential waves instead.
+- Each shard still obeys the normal ≤12/warn-13–16/refuse->16 leaf-count cap on its own. Sharding is how you go past that ceiling *in aggregate* without raising it for any single wave — mirrors 4 isolated groups of 16 rather than one ungoverned pool of 64.
+
+This is additive, not a replacement for the default path. Most specs fit in one wave and don't need this section at all — reach for shards only when the dependency map already shows multiple large, file-disjoint groups of slices, and running them sequentially would just be waiting with no coordination benefit.

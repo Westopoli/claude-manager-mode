@@ -42,6 +42,17 @@ test_assertion_budget: <int>
 # sequentially (e.g. wave-2 follow-up edits a file wave-1 already owned).
 # Cross-wave leaves skip overlap + do_not_edit checks against each other.
 # wave: 1
+# Optional: shard id, for waves that run CONCURRENTLY rather than
+# sequentially (see /manager-mode "Shard-based parallelism"). Default "" —
+# no shard, the ordinary single-wave-at-a-time path above. When set, this
+# brief's leaf-owned paths may never overlap with any other shard's,
+# regardless of wave number (checked across the whole run, not just this
+# shard's waves) — unlike cross-wave overlap, which is fine because waves
+# are sequential, cross-shard overlap is always a real collision because
+# shards run at the same time. Briefs discovered under a
+# `<briefs_dir>/shard-<id>/leaf-NN.md` path infer their shard from the
+# directory name even without this field set explicitly.
+# shard: shard-A
 # Optional: codebase preconditions. /manager-mode Phase 3.1 runs each `verify:`
 # command; non-zero exit = brief makes a false claim about codebase state.
 # Required when the brief asserts that some prior code/state exists
@@ -223,6 +234,7 @@ Never copy the parent-owned file into your impl as a workaround. Duplication is 
 | `do_not_edit` | Includes every same-wave sibling's leaf-owned files; includes parent-owned globs. (Sibling test files only required here when `test_owned_by` is `leaf`.) |
 | `test_owned_by` (optional) | `parent` or `leaf`. Default `leaf`. |
 | `wave` (optional) | Integer ≥ 1. Default 1. Cross-wave leaves are sequenced, not parallel. |
+| `shard` (optional) | String id, default none. Inferred from `shard-<id>/` directory if unset. Leaf-owned paths must never overlap another shard's, at any wave — shards run concurrently, so this check applies across the whole run, not just one wave. |
 | `impl_line_budget`, `test_assertion_budget` | Set, ≤ project max from `.claude-swarm.toml`. |
 | `codebase_preconditions` (optional) | Each `verify:` command exits 0. If task prose contains claim-words ("already", "in place", "exists as of", "previously added") without backing preconditions, Phase 3.1 heuristic-warns. |
 | `escalation_triggers` (optional) | Each `detect:` command (if present) is well-formed shell. Runtime check is Phase 6.5 G6. |

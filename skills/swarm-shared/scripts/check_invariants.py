@@ -218,6 +218,23 @@ def _wave(b: Brief) -> int:
         return 1
 
 
+def _shard(b: Brief) -> str:
+    """Shard id a brief belongs to, for concurrently-running waves.
+
+    Explicit `shard:` frontmatter wins. Otherwise infer from a `shard-<id>/`
+    parent directory (briefs discovered under `<briefs_dir>/shard-*/leaf-*.md`).
+    Empty string means "no shard" — the single-wave-at-a-time default, where
+    only the existing per-wave non-overlap check applies.
+    """
+    explicit = b.frontmatter.get("shard")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    for parent in b.path.parents:
+        if parent.name.startswith("shard-"):
+            return parent.name
+    return ""
+
+
 def _test_owned_by_leaf(b: Brief) -> bool:
     """Default: leaf owns its tests. Set test_owned_by: parent in the brief
     when the parent agent authors umbrella + integration tests and the leaf
@@ -227,11 +244,19 @@ def _test_owned_by_leaf(b: Brief) -> bool:
 
 def check_non_overlap(briefs: list[Brief], parent_owned: list[str]) -> list[Failure]:
     fails: list[Failure] = []
-    # Owner is scoped per wave: leaves in different waves run sequentially,
-    # so editing the same file across waves is fine (and common for follow-ups).
-    owner: dict[tuple[int, str], str] = {}
+    # Owner is scoped per (shard, wave): leaves in different waves of the SAME
+    # shard run sequentially, so editing the same file across waves is fine
+    # (and common for follow-ups). Shard defaults to "" when unused, so this
+    # collapses to the original per-wave-only key for single-shard projects.
+    owner: dict[tuple[str, int, str], str] = {}
+    # Cross-shard owner is scoped by path only, no wave: shards run
+    # CONCURRENTLY (that's the point of sharding — see "Shard-based
+    # parallelism" in SKILL.md), so two different shards ever claiming the
+    # same path is always a collision, regardless of their wave numbers.
+    cross_shard_owner: dict[str, tuple[str, str]] = {}  # path -> (shard, leaf_id)
     for b in briefs:
         b_wave = _wave(b)
+        b_shard = _shard(b)
         # impl paths always leaf-owned; test paths only if test_owned_by=leaf
         path_specs: list[tuple[str, str, bool]] = []
         for p in _leaf_paths(b, "impl"):
@@ -242,23 +267,39 @@ def check_non_overlap(briefs: list[Brief], parent_owned: list[str]) -> list[Fail
         for key, path, leaf_owned in path_specs:
             # parent_owned glob check only applies to leaf-claimed-ownership paths
             if leaf_owned:
-                wkey = (b_wave, path)
+                wkey = (b_shard, b_wave, path)
                 if wkey in owner:
                     fails.append(Failure(b.leaf_id, "non-overlap",
                         f"{key} `{path}` already owned by {owner[wkey]}"))
                 else:
                     owner[wkey] = b.leaf_id
+                if b_shard:
+                    prior = cross_shard_owner.get(path)
+                    if prior is not None and prior[0] != b_shard:
+                        fails.append(Failure(b.leaf_id, "non-overlap",
+                            f"{key} `{path}` claimed by shard `{prior[0]}` "
+                            f"(leaf {prior[1]}) — shards run concurrently, "
+                            f"no file may be owned by more than one shard"))
+                    else:
+                        cross_shard_owner.setdefault(path, (b_shard, b.leaf_id))
                 for glob in parent_owned:
                     if fnmatch.fnmatch(path, glob):
                         fails.append(Failure(b.leaf_id, "non-overlap",
                             f"{key} `{path}` matches parent-owned glob `{glob}`"))
 
-        # do_not_edit must include every same-wave sibling's leaf-owned files
+        # do_not_edit must include every same-wave, same-shard sibling's
+        # leaf-owned files. Cross-shard collisions are already fully forbidden
+        # above (cross_shard_owner) — shards must never overlap at all, not
+        # just declare it — so this sibling check stays scoped to leaves that
+        # actually run alongside each other: same shard, same wave.
         do_not = set(b.frontmatter.get("do_not_edit") or [])
         b_wave = _wave(b)
         for other in briefs:
             if other.leaf_id == b.leaf_id:
                 continue
+            if _shard(other) != b_shard:
+                continue  # different shard — no shared parallelism, and
+                          # any path overlap was already caught above
             if _wave(other) != b_wave:
                 continue  # different-wave leaves don't run in parallel
             sibling_paths: list[str] = list(_leaf_paths(other, "impl"))
@@ -431,7 +472,12 @@ def check_sizing(briefs: list[Brief], invariants: dict[str, Any]) -> list[Failur
 
 def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
     rpt = Report()
-    for path in sorted(briefs_dir.glob("leaf-*.md")):
+    # Flat `leaf-*.md` (the single-wave default) plus `shard-*/leaf-*.md`
+    # (concurrent shards — see "Shard-based parallelism" in SKILL.md). A
+    # project with no shards has zero matches for the second glob, so this
+    # is a no-op for every existing single-wave setup.
+    paths = sorted(briefs_dir.glob("leaf-*.md")) + sorted(briefs_dir.glob("shard-*/leaf-*.md"))
+    for path in paths:
         b = parse_brief(path)
         if b is None:
             rpt.failures.append(Failure(path.stem, "schema",
