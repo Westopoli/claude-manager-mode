@@ -146,6 +146,11 @@ def _parse_simple_yaml(text: str) -> dict[str, Any]:
             out.setdefault(current_key, []).append(item)
             continue
         if ":" in line:
+            # Indented `key: val` while accumulating a list is a nested-mapping
+            # sub-field (e.g. codebase_preconditions' `verify:`). The simple
+            # loader does not model nesting; skip it rather than crash.
+            if raw[:1].isspace() and isinstance(out.get(current_key), list):
+                continue
             key, _, val = line.partition(":")
             key = key.strip()
             val = val.strip()
@@ -375,7 +380,7 @@ def _load_contract_symbols(root: Path, contract_path: str) -> set[str] | None:
     return syms
 
 
-SPEC_LINK_RE = re.compile(r"^(?:#|--)\s*spec:\s*\S+::\S+::AC-\d+", re.MULTILINE)
+SPEC_LINK_RE = re.compile(r"^(?:#|--)\s*spec:\s*\S+::.+?::AC-\d+", re.MULTILINE)
 
 
 def check_spec_link(briefs: list[Brief], root: Path) -> list[Failure]:

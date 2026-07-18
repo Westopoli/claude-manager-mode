@@ -1,6 +1,6 @@
 ---
 name: manager-mode
-description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → decompose → audit → spawn → wait + sweep → admission loop → final report) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing) AND per-leaf failing tests; leaves only write impl. File-based, no git. Hard-refuses when decomposition exceeds ~16 leaves; warns >12. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
+description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → decompose → audit → spawn → wait + sweep → admission loop → final report → adversarial audit) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing) AND per-leaf failing tests; leaves only write impl. Leaf sub-agents default to cavecrew (builder/reviewer) when their tool needs fit; a closing adversarial `cavecrew-reviewer` pass assumes the umbrella test and admitted code are both wrong and must prove otherwise. File-based, no git. Hard-refuses when decomposition exceeds ~16 leaves; warns >12. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
 ---
 
 # /manager-mode — single-command parallel-agent cascade
@@ -24,6 +24,7 @@ Phase 4  Spawn leaves           — N sub-agents in parallel via Task() in one m
 Phase 5  Wait + sweep           — wait all green; aggregate assumption-sweep; write .swarm/wave-N.SWEEP.md
 Phase 6  Admission loop         — per leaf: G1–G7 + file-match + umbrella pre/post + admit-or-revert + log
 Phase 7  Final report           — counts + follow-up direction
+Phase 8  Adversarial audit      — cavecrew-reviewer assumes test+code are wrong; goal-trace → test-coverage → code-slop
 ```
 
 If all three inputs (spec, contract, umbrella RED) already exist on disk, Phase 1 is skipped entirely. That is the common path for a returning project.
@@ -242,9 +243,13 @@ a summary of what you staged.
 
 ### 4.2 Subagent type selection
 
-If a `caveman:cavecrew-builder` agent is available and the leaf scope is bounded (≤ 2 impl files, no new files unless brief explicitly declares them), prefer it — its surgical-edit posture matches the leaf brief's footprint discipline. Otherwise use `general-purpose`.
+Default to cavecrew for every leaf when it's available — its agents are caveman-compressed (cheaper reports back to the overlord) and each has a narrower blast radius than a general-purpose agent, which matches the brief's footprint discipline. Pick by capability fit, not by habit:
 
-This is a hint, not a hard rule. The brief's footprint discipline is the actual safety net; the choice of sub-agent type is performance optimization.
+- **`caveman:cavecrew-builder`** — default choice for a normal impl leaf. Needs only `Read, Edit, Write, Grep, Glob` and ≤ 2 impl files (it hard-refuses at 3+). Use it whenever the brief's `impl_files` count and required tools fit inside that.
+- **Brief needs something cavecrew-builder can't do** — `WebSearch`/`WebFetch` (external API shape lookup, doc lookup), `NotebookEdit`, 3+ impl files, or any tool outside `Read, Edit, Write, Grep, Glob` — fall back to `general-purpose`. Check the brief's tool footprint before spawning, don't discover the refusal mid-wave.
+- **`caveman:cavecrew-investigator`** — not used for impl leaves (it's read-only), but reach for it inline during Phase 2/3 if you need a quick file-locator pass without burning overlord context.
+
+This is a hint, not a hard rule. The brief's footprint discipline is the actual safety net; the choice of sub-agent type is performance optimization. If a cavecrew-builder leaf hard-refuses mid-spawn, re-spawn that one leaf as `general-purpose` — don't downgrade the whole wave.
 
 ### 4.3 Wait for all leaves to report
 
@@ -458,7 +463,84 @@ Apex: <PASS | skipped | FAILED>.
 - For each escalation (G3/G4/G6 blocks resolved during the loop): list what got resolved and how.
 - For wave-sweep flags accepted as patches: confirm the patches landed.
 
-End the turn.
+Do not end the turn here — Phase 8 runs automatically right after the report, no separate user trigger needed. Every gate through Phase 7 checks "did the leaf's test pass" — none of them check "was the test worth passing" or "is this code any good." Phase 8 is the one pass that assumes both are wrong and makes someone prove otherwise.
+
+---
+
+## Phase 8 — Adversarial audit
+
+Runs once per wave, after Phase 7's report, against everything admitted this wave (skip leaves that reverted — nothing to audit). The posture is adversarial by design: every gate up to now was a leaf proving its own test green. Nothing so far has asked whether the test encodes the real requirement, or whether the code behind it is something a senior engineer would sign off on. This phase hires a skeptic for that job.
+
+### 8.1 Overlord compiles the goal-trace
+
+Only the overlord chat has the conversation — a fresh sub-agent starts blank, so this step has to happen here, not in the sub-agent. Pull together, in one file `.swarm/wave-<wave>.AUDIT-BRIEF.md`:
+
+- **User's ask, verbatim.** Quote the actual request(s) that led to this wave — the original feature ask, plus any mid-wave corrections or scope changes the user gave in chat. Paraphrase only where the user's message was very long; otherwise quote.
+- **Locked spec** — path + the Summary and Acceptance Criteria sections in full.
+- **Umbrella test file path(s)** and **every admitted leaf's** `impl_files` + `test_files` (from `post-review-log.md`, `status: clean` rows only).
+- **Anything already flagged and dismissed** — wave-sweep entries the user decided not to act on, yellow-flags admitted anyway. The auditor should know what's already been litigated so it doesn't re-relitigate a decision the user already made, but it can still disagree if the dismissal looks wrong in hindsight.
+
+This is a compilation step, not a judgment step — don't pre-filter what looks fine. The auditor forms its own opinion in 8.3.
+
+### 8.2 Spawn the auditor
+
+Spawn one `caveman:cavecrew-reviewer` agent (fall back to `general-purpose` with an explicit "assume it's wrong" instruction if cavecrew isn't available) with `.swarm/wave-<wave>.AUDIT-BRIEF.md` plus this framing:
+
+```
+You are auditing wave <wave> of a TDD cascade. Default posture: assume the
+umbrella test and the admitted code are BOTH wrong until you've checked hard
+enough to be confident otherwise. Passing tests only prove the code matches
+the test — they prove nothing about whether the test matches what the user
+actually asked for. That's your job to check.
+
+Read .swarm/wave-<wave>.AUDIT-BRIEF.md first. Then work in three stages, in
+order:
+
+STAGE A — Goal fidelity.
+Compare the user's verbatim ask against the locked spec's Summary + Acceptance
+Criteria. Does the spec actually capture what the user asked for, or did it
+drift, narrow, or silently drop a requirement during lite-discovery? Flag any
+AC that doesn't trace back to something the user said, and any user requirement
+with no corresponding AC.
+
+STAGE B — Umbrella test coverage.
+Read the umbrella test file(s) in full. For each Acceptance Criterion, find the
+assertion(s) that would fail if that AC's behavior broke. If you can't find one,
+that AC is UNTESTED regardless of what the test suite reports. Call out:
+  - assertions that check the test ran (mocks, source-grep, "no exception raised")
+    rather than the actual observable behavior the AC describes
+  - ACs with no assertion at all
+  - assertions weaker than the AC requires (e.g. AC says "returns sorted list",
+    test only checks the list is non-empty)
+Do not accept "the test passed" as evidence the AC is covered. Read what it
+actually asserts.
+
+STAGE C — Code quality.
+Read every admitted impl file. You are looking for what a senior engineer would
+flag in review, not just what breaks the test — the code passed its narrow test
+already, so a bug that survived is one the test doesn't exercise. Look for:
+  - actual bugs / wrong behavior the umbrella test doesn't cover
+  - inefficiency (needless O(n^2), repeated work, allocations in hot paths)
+  - code slop: dead code, copy-pasted near-duplicates, overbroad
+    try/except, magic values that should be named, functions doing two jobs
+  - missing error handling at real boundaries (not defensive checks on
+    internal invariants that can't happen)
+  - anything that technically satisfies the brief but wouldn't survive a
+    real code review
+
+Report each stage separately, findings only, severity-tagged as usual
+(🔴 bug, 🟡 risk, 🔵 nit, ❓ question). If a stage is genuinely clean, say so
+in one line — don't manufacture findings to fill space, but don't let "it's
+probably fine" pass without having actually checked.
+```
+
+### 8.3 Present findings, don't auto-revert
+
+Render the auditor's report to the user verbatim, organized under its three stage headers. This phase never reverts or re-spawns leaves on its own — it surfaces what a skeptical second pass found and lets the user decide what's worth acting on, same as the wave-sweep in Phase 5.2. For each 🔴/🟡 finding, suggest the fix path: goal-fidelity gaps go back to spec (re-open Phase 1.A for that AC), test-coverage gaps mean writing a stronger umbrella assertion and re-running the affected leaf's admission, code-quality findings can usually be patched directly without a full re-spawn.
+
+Append the report to `.swarm/wave-<wave>.AUDIT.md` for the record. Do not fold it into `post-review-log.md` — that log is admission history, not review commentary, and stays append-only in its existing shape.
+
+End the turn after presenting.
 
 ---
 
