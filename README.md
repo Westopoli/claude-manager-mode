@@ -8,7 +8,7 @@
 
 [Why TDD + AI](#why-tdd-for-ai-agents) • [Before / After](#before--after) • [Benchmarks](#benchmarks) • [What you get](#what-you-get) • [How it works](#how-it-works) • [Install](#install) • [Config](#config)
 
-A Claude Code skill pack that lets you run many AI sub-agents in parallel without the usual failure modes: overlapping file edits, silent design decisions, oversized tasks, regressions slipping past admission.
+A skill pack for Claude Code and Codex that lets you run many AI sub-agents in parallel without the usual failure modes: overlapping file edits, silent design decisions, oversized tasks, regressions slipping past admission.
 
 One slash command. Eight phases. A dozen layered gates. One tree-shaped cascade.
 
@@ -78,6 +78,8 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
                 Phase 6  admission loop: G1–G7 + umbrella pre/post per leaf
                           (admit or revert from file backup)
                 Phase 7  final report: counts + follow-ups + apex test
+                Phase 8  batched evidence audit: ≤3 admitted leaves per batch;
+                          auditor evidence → overlord confirmation → verified repair
 ```
 
 ## Benchmarks
@@ -129,7 +131,7 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 5. **Spawn (Phase 4).** One sub-agent per brief, in parallel — single message with N `Task()` calls. Each sub-agent's prompt says: "tests at X are failing; write impl at Y to make them pass; do not modify tests; stage at `.swarm/pending/leaf-NN/`."
 6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green. Then run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `.swarm/wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
 7. **Admission loop (Phase 6).** Per leaf: G1–G7 gates → file-match → umbrella pre/post → admit-or-revert. Backup-based revert (no git). Append-only `post-review-log.md` for audit trail.
-8. **Report (Phase 7).** Counts of admitted/reverted/escalated. Apex test if configured. Direction for follow-up work.
+8. **Report + evidence audit (Phases 7–8).** Counts of admitted/reverted/escalated and apex status, followed by parallel evidence audits in deterministic ≤3-leaf batches. The overlord records accepted/denied findings and verifies any confirmed in-footprint repair with affected tests and the configured full suite.
 
 ## Coordination model
 

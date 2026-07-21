@@ -1,6 +1,6 @@
 ---
 name: manager-mode
-description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → decompose → audit → spawn → wait + sweep → admission loop → final report → adversarial audit) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing) AND per-leaf failing tests; leaves only write impl. Leaf sub-agents default to cavecrew (builder/reviewer) when their tool needs fit; a closing adversarial `cavecrew-reviewer` pass assumes the umbrella test and admitted code are both wrong and must prove otherwise. File-based, no git. Hard-refuses when decomposition exceeds ~16 leaves; warns >12. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
+description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → decompose → audit → spawn → wait + sweep → admission loop → final report → batched evidence audit) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing) AND per-leaf failing tests; leaves only write impl. Fresh adversarial auditors review admitted leaves in parallel batches of at most three; the overlord confirms claims and verifies only in-footprint repairs. File-based, no git. Hard-refuses when decomposition exceeds ~16 leaves; warns >12. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
 ---
 
 # /manager-mode — single-command parallel-agent cascade
@@ -24,7 +24,7 @@ Phase 4  Spawn leaves           — N sub-agents in parallel via Task() in one m
 Phase 5  Wait + sweep           — wait all green; aggregate assumption-sweep; write .swarm/wave-N.SWEEP.md
 Phase 6  Admission loop         — per leaf: G1–G7 + file-match + umbrella pre/post + admit-or-revert + log
 Phase 7  Final report           — counts + follow-up direction
-Phase 8  Adversarial audit      — cavecrew-reviewer assumes test+code are wrong; goal-trace → test-coverage → code-slop
+Phase 8  Batched evidence audit — parallel auditors review admitted leaves in batches of ≤3; overlord adjudicates
 ```
 
 If all three inputs (spec, contract, umbrella RED) already exist on disk, Phase 1 is skipped entirely. That is the common path for a returning project.
@@ -400,14 +400,14 @@ If the brief has an `## Acceptance` block with a test command, run it as a secon
 # Post-Review Log — append-only, do not edit manually
 # Editing this file invalidates bypass-detection.
 
-| leaf_id | files | delta | timestamp | status |
-|---------|-------|-------|-----------|--------|
+| wave | shard | leaf_id | files | delta | timestamp | status |
+|------|-------|---------|-------|-------|-----------|--------|
 ```
 
 - Append one row:
 
 ```
-| leaf-NN | <impl_files>, <test_files> | +N | <ISO timestamp> | clean |
+| <wave> | <shard-or-default> | leaf-NN | <impl_files>, <test_files> | +N | <ISO timestamp> | clean |
 ```
 
 The log is append-only. Never edit, reorder, or delete entries.
@@ -422,7 +422,7 @@ The log is append-only. Never edit, reorder, or delete entries.
 - Append to `post-review-log.md`:
 
 ```
-| leaf-NN | <impl_files>, <test_files> | REVERTED | <ISO timestamp> | regression: <test-name> |
+| <wave> | <shard-or-default> | leaf-NN | <impl_files>, <test_files> | REVERTED | <ISO timestamp> | regression: <test-name> |
 ```
 
 - Append a `## Post-review regression` block to `<briefs_dir>/leaf-NN.md` noting the regressed test + staged diff summary.
@@ -467,28 +467,31 @@ Do not end the turn here — Phase 8 runs automatically right after the report, 
 
 ---
 
-## Phase 8 — Adversarial audit
+## Phase 8 — Batched evidence audit
 
-Runs once per wave, after Phase 7's report, against everything admitted this wave (skip leaves that reverted — nothing to audit). The posture is adversarial by design: every gate up to now was a leaf proving its own test green. Nothing so far has asked whether the test encodes the real requirement, or whether the code behind it is something a senior engineer would sign off on. This phase hires a skeptic for that job.
+Runs after the normal Phase 6 admission loop and Phase 7 report; it does not replace or weaken any earlier gate. For each wave/shard independently, take only `status: clean` rows whose `wave` and `shard` columns match the current wave/shard from `post-review-log.md`, sort by ascending `leaf-NN`, and partition them into deterministic batches of at most three: `batch-01` contains leaves 1–3, `batch-02` the next 1–3, and so on. Reverted and escalated leaves are not audited. A legacy row without wave/shard identity is not eligible: record it as an escalation instead of guessing. Batches from the same wave and different shards may run in parallel because Phase 3 already requires their footprints not to overlap.
+
+The posture is adversarial by design: every gate up to now was a leaf proving its own test green. Nothing so far has asked whether the test encodes the real requirement, or whether the code behind it is something a senior engineer would sign off on. This phase hires independent skeptics, then requires the overlord to prove each proposed repair before applying it.
 
 ### 8.1 Overlord compiles the goal-trace
 
-Only the overlord chat has the conversation — a fresh sub-agent starts blank, so this step has to happen here, not in the sub-agent. Pull together, in one file `.swarm/wave-<wave>.AUDIT-BRIEF.md`:
+Only the overlord chat has the conversation — fresh auditors start blank, so this step has to happen here. For every batch, create `.swarm/audits/wave-<wave>/<shard-or-default>/batch-<NN>/AUDIT-BRIEF.md` containing:
 
 - **User's ask, verbatim.** Quote the actual request(s) that led to this wave — the original feature ask, plus any mid-wave corrections or scope changes the user gave in chat. Paraphrase only where the user's message was very long; otherwise quote.
 - **Locked spec** — path + the Summary and Acceptance Criteria sections in full.
-- **Umbrella test file path(s)** and **every admitted leaf's** `impl_files` + `test_files` (from `post-review-log.md`, `status: clean` rows only).
+- **Batch membership and writable footprint** — only its admitted leaves' `impl_files` + `test_files`. List umbrella test file path(s) separately as read-only audit context. Parent-owned files, contracts, umbrella tests, and all paths outside the writable footprint are escalation-only.
 - **Anything already flagged and dismissed** — wave-sweep entries the user decided not to act on, yellow-flags admitted anyway. The auditor should know what's already been litigated so it doesn't re-relitigate a decision the user already made, but it can still disagree if the dismissal looks wrong in hindsight.
 
-This is a compilation step, not a judgment step — don't pre-filter what looks fine. The auditor forms its own opinion in 8.3.
+This is a compilation step, not a judgment step — don't pre-filter what looks fine. Record the wave, shard, deterministic batch ID, and ordered leaf membership in every artifact.
 
-### 8.2 Spawn the auditor
+### 8.2 Spawn auditors in parallel
 
-Spawn one `caveman:cavecrew-reviewer` agent (fall back to `general-purpose` with an explicit "assume it's wrong" instruction if cavecrew isn't available) with `.swarm/wave-<wave>.AUDIT-BRIEF.md` plus this framing:
+Spawn one fresh-context `caveman:cavecrew-reviewer` per batch (fall back to `general-purpose` with an explicit "assume it's wrong" instruction if cavecrew isn't available). Dispatch all batches for the wave/shard together; auditors must not see other auditors' reports while working. Give each its own `AUDIT-BRIEF.md` plus this framing:
 
 ```
-You are auditing wave <wave> of a TDD cascade. Default posture: assume the
-umbrella test and the admitted code are BOTH wrong until you've checked hard
+You are auditing batch <batch-id> (leaves <membership>) in wave <wave>, shard
+<shard> of a TDD cascade. You are a fresh-context, evidence-only reviewer.
+Default posture: assume the umbrella test and the admitted code are BOTH wrong until you've checked hard
 enough to be confident otherwise. Passing tests only prove the code matches
 the test — they prove nothing about whether the test matches what the user
 actually asked for. That's your job to check.
@@ -506,15 +509,15 @@ the real behavior) caught what the other 80 missed. You are that agent.
 Confirmation is not your default; it's a conclusion you have to earn by
 failing to find a problem after genuinely trying.
 
-Every finding you report — at any severity, 🔴/🟡/🔵/❓ — must cite the
-concrete evidence behind it: a quote from the code, the test assertion
-text, the spec line, or (if you can run one) an actual command/test output.
+Every finding you report — at any severity, 🔴/🟡/🔵/❓ — requires all three:
+a concrete probe command, its observed output, and a quote from the code,
+test assertion text, or locked spec.
 "This looks wrong" is not a finding; "line N does X, which contradicts
 AC-3's requirement that Y" is. If you can't point to the specific evidence,
 you haven't finished checking — keep looking or downgrade to a ❓ question
 you flag as unverified, don't report it as a settled finding.
 
-Read .swarm/wave-<wave>.AUDIT-BRIEF.md first. Then work in three stages, in
+Read your AUDIT-BRIEF.md first. Then work in three stages, in
 order:
 
 STAGE A — Goal fidelity.
