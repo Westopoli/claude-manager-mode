@@ -1,9 +1,9 @@
-# claude-manager-mode
+# manager-mode
 
-> Disciplined parallel-agent TDD for Claude Code. One north-star test, many sub-tasks, zero drift.
+> Disciplined parallel-agent TDD for Claude Code and Codex. One north-star test, many sub-tasks, zero drift.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
-![Claude Code](https://img.shields.io/badge/Claude%20Code-skill-D97757)
+![Claude Code + Codex](https://img.shields.io/badge/Claude%20Code%20%2B%20Codex-skill-D97757)
 ![Status](https://img.shields.io/badge/status-v1.1-green)
 
 [Why TDD + AI](#why-tdd-for-ai-agents) • [Before / After](#before--after) • [Benchmarks](#benchmarks) • [What you get](#what-you-get) • [How it works](#how-it-works) • [Install](#install) • [Config](#config)
@@ -14,7 +14,8 @@ One slash command. Eight phases. A dozen layered gates. One tree-shaped cascade.
 
 | Command | What it does |
 |---|---|
-| `/manager-mode` | The whole cascade in one command. Drafts spec/contract/umbrella if missing (lite-discovery), decomposes the spec into per-sub-agent briefs, writes a failing test per sub-agent, audits the briefs, spawns sub-agents in parallel, waits for green, runs an aggregate assumption-sweep, then admits each sub-agent through G1–G7 + the umbrella regression check. Reverts via file-backup on regression. No git, no chained commands, no `.UNSTATED.md` ceremony. |
+| `/manager-mode` | The whole cascade in one command. Drafts spec/contract/umbrella if missing, writes and audits per-leaf RED tests, spawns builders in parallel, sweeps assumptions, admits each leaf through G1–G7 + umbrella checks, then evidence-audits admitted leaves in parallel batches of at most three. Confirmed batch-footprint repairs must pass affected tests and the full suite. |
+| `/manager-mode-hardcore` | For high-consequence work: keeps the normal admission flow, then uses two independent fresh-context auditors and a third adjudicating reviewer for every ≤3-leaf batch. |
 
 ---
 
@@ -51,7 +52,7 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
 
 ## Before / After
 
-### Without claude-manager-mode
+### Without Manager Mode
 
 ```
 "spawn 5 agents on this"
@@ -64,7 +65,7 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
    Agent E ──── "done!"               ← integration test still failing, nobody noticed
 ```
 
-### With claude-manager-mode
+### With Manager Mode
 
 ```
    /manager-mode  ──►  Phase 0  preflight (config + check which inputs exist)
@@ -84,7 +85,7 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
 
 ## Benchmarks
 
-Paired evals (one with `claude-manager-mode`, one without), each targeting a specific failure mode. Graded on **mistake prevention**, not pass-rate, tokens, or wall-clock. Methodology: [skills/swarm-shared/references/evaluation-rubric.md](skills/swarm-shared/references/evaluation-rubric.md).
+Paired evals (one with Manager Mode, one without), each targeting a specific failure mode. Graded on **mistake prevention**, not pass-rate, tokens, or wall-clock. Methodology: [skills/swarm-shared/references/evaluation-rubric.md](skills/swarm-shared/references/evaluation-rubric.md).
 
 **Core safety suite (A–E):**
 
@@ -128,7 +129,7 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 2. **Lite-discovery (Phase 1).** Fires only for missing inputs. One-question drafts per artifact — spec, type contract, failing umbrella test. The spec carries a Bible Compliance footer (cites your source-of-truth doc + lists deliberate divergences). No `.UNSTATED.md` ceremony.
 3. **Decompose (Phase 2).** Reads spec + contract, emits one brief per sub-agent at `<briefs_dir>/leaf-NN.md`, AND writes a failing test for each brief (overlord-owned tests; leaves only write impl). Refuses to emit more than 16 leaves in one wave; warns past 12. Every test file begins with a `# spec: <path>::<section>::AC-<N>` header (Spec Link Rule).
 4. **Audit (Phase 3).** Runs `check_invariants.py`. Any FAIL → fix the brief and re-run. No spawn until PASS.
-5. **Spawn (Phase 4).** One sub-agent per brief, in parallel — single message with N `Task()` calls. Each sub-agent's prompt says: "tests at X are failing; write impl at Y to make them pass; do not modify tests; stage at `.swarm/pending/leaf-NN/`."
+5. **Spawn (Phase 4).** One sub-agent per brief, in parallel — Claude Code uses native `Task` delegation and Codex uses `spawn_agent`. Each sub-agent's prompt says: "tests at X are failing; write impl at Y to make them pass; do not modify tests; stage at `.swarm/pending/leaf-NN/`."
 6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green. Then run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `.swarm/wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
 7. **Admission loop (Phase 6).** Per leaf: G1–G7 gates → file-match → umbrella pre/post → admit-or-revert. Backup-based revert (no git). Append-only `post-review-log.md` for audit trail.
 8. **Report + evidence audit (Phases 7–8).** Counts of admitted/reverted/escalated and apex status, followed by parallel evidence audits in deterministic ≤3-leaf batches. The overlord records accepted/denied findings and verifies any confirmed in-footprint repair with affected tests and the configured full suite.
@@ -171,7 +172,7 @@ Every safety net is a numbered gate. Each runs at a specific point in the workfl
 
 ## Install
 
-Copies the skills into `~/.claude/skills/`. Restart Claude Code, then invoke `/manager-mode`.
+One command detects Claude Code and Codex and installs the versioned `manager-mode`, `manager-mode-hardcore`, and `swarm-shared` skills into every detected client.
 
 **macOS / Linux**
 ```bash
@@ -199,21 +200,42 @@ cd claude-manager-mode
 .\install.ps1
 ```
 
+### Installer options and behavior
+
+```bash
+./install.sh --list                 # show detected clients and their config homes
+./install.sh --only claude          # install only for Claude Code
+./install.sh --only codex           # install only for Codex
+./install.sh --dry-run              # show targets without changing them
+```
+
+```powershell
+.\install.ps1 -List
+.\install.ps1 -Only claude
+.\install.ps1 -Only codex -DryRun
+```
+
+Claude Code is detected when its `claude` executable is on `PATH` or its config home exists; Codex follows the same rule for `codex`. The target directories are `${CLAUDE_CONFIG_DIR:-~/.claude}/skills` and `${CODEX_HOME:-~/.codex}/skills` (PowerShell uses the same environment variables, falling back to the user's home directory). If neither client is present, the installer exits successfully without changing anything.
+
+Before an update, existing installed and legacy skill directories are renamed with a timestamped `.bak.*` suffix. The installer validates and stages all required skills before it changes a target. Restart Claude Code after installing. For Codex, restart or refresh the Codex CLI or the local Codex surface in the ChatGPT desktop app, then invoke `/manager-mode` or `/manager-mode-hardcore`. A shell installer cannot add skills to ordinary hosted ChatGPT chats.
+
 ### Uninstall
 
 ```bash
 # macOS / Linux
-rm -rf ~/.claude/skills/{swarm,swarm-shared}
+rm -rf ~/.claude/skills/{manager-mode,manager-mode-hardcore,swarm-shared}
+rm -rf ~/.codex/skills/{manager-mode,manager-mode-hardcore,swarm-shared}
 ```
 
 ```powershell
 # Windows
-Remove-Item -Recurse -Force $env:USERPROFILE\.claude\skills\swarm, $env:USERPROFILE\.claude\skills\swarm-shared
+Remove-Item -Recurse -Force $env:USERPROFILE\.claude\skills\manager-mode, $env:USERPROFILE\.claude\skills\manager-mode-hardcore, $env:USERPROFILE\.claude\skills\swarm-shared
+Remove-Item -Recurse -Force $env:USERPROFILE\.codex\skills\manager-mode, $env:USERPROFILE\.codex\skills\manager-mode-hardcore, $env:USERPROFILE\.codex\skills\swarm-shared
 ```
 
 ## Config
 
-Optional. Drop a `.claude-swarm.toml` at your repo root to point claude-manager-mode at your test command and project layout:
+Optional. Drop a `.claude-swarm.toml` at your repo root to point Manager Mode at your test command and project layout:
 
 ```toml
 spec_dir           = "specs/"
@@ -222,7 +244,7 @@ umbrella_test_cmd  = "pytest tests/umbrella -x"
 type_contract_path = "src/contract.py"
 ```
 
-Without a config file, claude-manager-mode uses sensible defaults — the only thing you'll *probably* need to set is `umbrella_test_cmd` so it knows how to run your test suite.
+Without a config file, Manager Mode uses sensible defaults — the only thing you'll *probably* need to set is `umbrella_test_cmd` so it knows how to run your test suite.
 
 **What you can tune (via `.claude-swarm.toml`, never edit the script):**
 

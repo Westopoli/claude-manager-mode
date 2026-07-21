@@ -9,7 +9,17 @@ One slash command. The overlord (this chat) drives every phase. Sub-agents only 
 
 The cascade prevents three structural failures in parallel-agent TDD: (1) leaves stepping on each other's files, (2) leaves silently making design decisions, (3) leaves receiving slices too big to finish coherently. Phases 0–7 are the procedure for keeping those guarantees while collapsing the prior 4-command UX into one.
 
-Theory: `~/.claude/skills/swarm-shared/references/playbook.md`. Brief template: `~/.claude/skills/swarm-shared/references/brief-template.md`. Config schema: `~/.claude/skills/swarm-shared/references/config.md`.
+## Shared asset resolver
+
+Resolve `SWARM_SHARED_DIR` once before using a shared asset. In Claude Code, use
+`${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/swarm-shared`; in Codex, use
+`${CODEX_HOME:-$HOME/.codex}/skills/swarm-shared`. Choose the directory belonging to
+the client running this skill, and verify it exists before continuing. Every
+shared-asset path below is relative to `SWARM_SHARED_DIR`.
+
+Theory: `$SWARM_SHARED_DIR/references/playbook.md`. Brief template:
+`$SWARM_SHARED_DIR/references/brief-template.md`. Config schema:
+`$SWARM_SHARED_DIR/references/config.md`.
 
 ---
 
@@ -20,7 +30,7 @@ Phase 0  Preflight              — find/bootstrap .claude-swarm.toml; list whic
 Phase 1  Lite-discovery         — fire only for missing inputs; one-question drafts, Bible Compliance footer on spec
 Phase 2  Decompose              — emit briefs + write per-leaf failing tests (Spec Link Rule + task-size guardrail)
 Phase 3  Audit briefs           — run check_invariants.py + codebase-preconditions; fix & re-run on FAIL
-Phase 4  Spawn leaves           — N sub-agents in parallel via Task() in one message
+Phase 4  Spawn leaves           — N sub-agents in parallel through the client delegation adapter
 Phase 5  Wait + sweep           — wait all green; aggregate assumption-sweep; write .swarm/wave-N.SWEEP.md
 Phase 6  Admission loop         — per leaf: G1–G7 + file-match + umbrella pre/post + admit-or-revert + log
 Phase 7  Final report           — counts + follow-up direction
@@ -33,7 +43,7 @@ If all three inputs (spec, contract, umbrella RED) already exist on disk, Phase 
 
 ## Phase 0 — Preflight
 
-**0.1 Locate config.** Walk up from cwd until a `.claude-swarm.toml` is found. If none: copy `~/.claude/skills/swarm-shared/templates/.claude-swarm.toml.example` to `<project_root>/.claude-swarm.toml`, then ask the user to fill each required field — do not guess values, wrong values here propagate everywhere:
+**0.1 Locate config.** Walk up from cwd until a `.claude-swarm.toml` is found. If none: copy `$SWARM_SHARED_DIR/templates/.claude-swarm.toml.example` to `<project_root>/.claude-swarm.toml`, then ask the user to fill each required field — do not guess values, wrong values here propagate everywhere:
 
 - `spec_dir` — directory for the spec file (often `specs/`).
 - `briefs_dir` — leaf briefs go here (default `.swarm/briefs/`).
@@ -142,7 +152,7 @@ Do not pick silently. The seam-axis decision belongs to the user.
 
 ### 2.4 Emit briefs
 
-For each slice, write `<briefs_dir>/leaf-NN.md` following `~/.claude/skills/swarm-shared/references/brief-template.md`. Set `test_owned_by: parent` in every brief frontmatter (the overlord owns the test files now).
+For each slice, write `<briefs_dir>/leaf-NN.md` following `$SWARM_SHARED_DIR/references/brief-template.md`. Set `test_owned_by: parent` in every brief frontmatter (the overlord owns the test files now).
 
 Key brief rules:
 - `spec_lines`: concrete `int-int` range.
@@ -181,7 +191,7 @@ After writing each test, run it once to confirm RED. If GREEN: the test does not
 Run the deterministic invariant check:
 
 ```bash
-python ~/.claude/skills/swarm-shared/scripts/check_invariants.py
+python "$SWARM_SHARED_DIR/scripts/check_invariants.py"
 ```
 
 Optional flags: `--briefs-dir <path>`, `--root <path>`.
@@ -215,11 +225,11 @@ If FAIL is on **non-overlap**, surface both resolution paths (sequential waves v
 
 ## Phase 4 — Spawn leaves
 
-After Phase 3 reports `all PASS`, spawn one sub-agent per brief **in parallel** — a single message with N `Task()` tool calls, not N sequential turns.
+After Phase 3 reports `all PASS`, spawn one sub-agent per brief **in parallel**. Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together (not sequentially) and retain every existing footprint, staging, Phase 5 sweep, and Phase 6 admission gate exactly as written.
 
 ### 4.1 Per-leaf prompt shape
 
-Each `Task()` call gets a self-contained prompt:
+Each delegation call gets a self-contained prompt:
 
 ```
 You are leaf-NN of a TDD cascade. Read your brief at <briefs_dir>/leaf-NN.md
@@ -557,19 +567,30 @@ already, so a bug that survived is one the test doesn't exercise. Look for:
     real code review
 
 Report each stage separately, findings only, severity-tagged as usual
-(🔴 bug, 🟡 risk, 🔵 nit, ❓ question), each finding paired with the evidence
-that grounds it (see above). If a stage is genuinely clean, say so in one
-line — don't manufacture findings to fill space, but don't let "it's
-probably fine" pass without having actually checked and tried to refute.
+(🔴 bug, 🟡 risk, 🔵 nit, ❓ question). Every finding MUST include (1) a
+concrete test or probe command, (2) its observed output, and (3) a source or
+locked-spec citation. A claim missing any of those is unverified, not a
+finding. Do not edit any file. If a needed repair touches a parent-owned file,
+contract, umbrella, or any path outside this batch's declared implementation/
+test footprint, mark it `ESCALATION-ONLY`; do not widen scope. If a stage is
+genuinely clean, say so in one line — don't manufacture findings.
+
+Write your complete report to
+`.swarm/audits/wave-<wave>/<shard-or-default>/batch-<NN>/auditor.md`.
 ```
 
-### 8.3 Present findings, don't auto-revert
+### 8.3 Overlord post-mortem and confirmed repairs
 
-Render the auditor's report to the user verbatim, organized under its three stage headers. This phase never reverts or re-spawns leaves on its own — it surfaces what a skeptical second pass found and lets the user decide what's worth acting on, same as the wave-sweep in Phase 5.2. For each 🔴/🟡 finding, suggest the fix path: goal-fidelity gaps go back to spec (re-open Phase 1.A for that AC), test-coverage gaps mean writing a stronger umbrella assertion and re-running the affected leaf's admission, code-quality findings can usually be patched directly without a full re-spawn.
+After every batch auditor reports, process batches one at a time. Independently confirm or deny every claim against the code, tests, locked spec, and the stated probe. Record the verdict, the overlord's evidence/rationale, and the auditor report path in `.swarm/audits/wave-<wave>/<shard-or-default>/batch-<NN>/POST-MORTEM.md`.
 
-Append the report to `.swarm/wave-<wave>.AUDIT.md` for the record. Do not fold it into `post-review-log.md` — that log is admission history, not review commentary, and stays append-only in its existing shape.
+- Apply only confirmed repairs, and only inside that batch's declared implementation/test footprint.
+- Keep parent-owned files, contracts, umbrella tests, and all out-of-footprint changes escalation-only. Record the escalation; do not silently widen scope.
+- For every confirmed repair, run affected leaf tests first, then the configured umbrella/full suite. A failed verification reverts the repair using the existing backup/revert discipline and is recorded as failed, not accepted.
+- Denied and unverified claims change nothing. Never auto-revert an admitted leaf merely because an auditor alleged a defect.
 
-End the turn after presenting.
+The final wave post-mortem is `.swarm/audits/wave-<wave>/<shard-or-default>/POST-MORTEM.md`. It lists every batch's membership, auditor evidence, accepted/denied/unverified verdicts, changed paths, escalations, affected-test results, and full-suite status. Do not fold these records into `post-review-log.md`; that log remains append-only admission history.
+
+Update the Phase 7 report before ending: include batch and auditor counts, batch outcomes, confirmed fixes, denied findings, escalations, and final suite status.
 
 ---
 
@@ -593,7 +614,7 @@ Leaves never message each other directly — the cascade is a tree, leaf-to-leaf
 | Question ledger | Leaf publishes `.swarm/questions/leaf-NN-Q<n>.md`; parent answers in `.swarm/answers/`. Leaf proceeds under best-guess, tags ASSUMPTIONS `unanswered: true`. | G3 (Phase 6.5) |
 | Contract proposals | Leaf publishes `.swarm/proposals/leaf-NN.md` instead of editing parent-owned files. Parent applies + marks accepted. | G4 (Phase 6.5) |
 
-Full theory at `~/.claude/skills/swarm-shared/references/playbook.md`.
+Full theory at `$SWARM_SHARED_DIR/references/playbook.md`.
 
 ---
 

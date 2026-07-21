@@ -1,67 +1,102 @@
-# claude-manager-mode installer for Windows (PowerShell)
-# Copies skills into ~/.claude/skills/ so Claude Code picks them up.
-#
-# Usage (run from PowerShell):
-#   irm https://raw.githubusercontent.com/Westopoli/claude-manager-mode/main/install.ps1 | iex
-#
-# Or, after cloning the repo:
-#   .\install.ps1
+[CmdletBinding()]
+param(
+    [ValidateSet("claude", "codex")]
+    [string]$Only,
+    [switch]$DryRun,
+    [switch]$List
+)
 
 $ErrorActionPreference = "Stop"
-
 $REPO_URL = "https://github.com/Westopoli/claude-manager-mode"
-$SKILLS_DIR = Join-Path $env:USERPROFILE ".claude\skills"
-$SKILLS = @("manager-mode", "swarm-shared")
+$Skills = @("manager-mode", "manager-mode-hardcore", "swarm-shared")
+$Legacy = @("swarm", "swarm-spawn", "swarm-review", "swarm-post-review", "swarm-merge")
+$claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME ".claude" }
+$codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
 
-Write-Host "claude-manager-mode -- installing to $SKILLS_DIR"
-New-Item -ItemType Directory -Force -Path $SKILLS_DIR | Out-Null
-
-# Clean up legacy skill dirs from prior installs.
-# - swarm-spawn / swarm-review / swarm-post-review / swarm-merge: absorbed into the unified cascade in v2.
-# - swarm: renamed to manager-mode in v3.
-$LEGACY = @("swarm", "swarm-spawn", "swarm-review", "swarm-post-review", "swarm-merge")
-foreach ($legacy in $LEGACY) {
-    $legacyPath = Join-Path $SKILLS_DIR $legacy
-    if (Test-Path $legacyPath) {
-        $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-        $backup = "${legacyPath}.bak.$timestamp"
-        Write-Host "  ${legacy}: legacy install found (renamed or absorbed into /manager-mode); backing up to $(Split-Path -Leaf $backup)"
-        Move-Item $legacyPath $backup
+function Test-Client([string]$CommandName, [string]$ConfigHome) {
+    return $null -ne (Get-Command $CommandName -ErrorAction SilentlyContinue) -or (Test-Path -Path $ConfigHome -PathType Container)
+}
+function Show-Detection {
+    $claudeState = if ($claudeDetected) { "detected" } else { "not detected" }
+    $codexState = if ($codexDetected) { "detected" } else { "not detected" }
+    Write-Output "Claude Code: $claudeState ($claudeHome)"
+    Write-Output "Codex:       $codexState ($codexHome)"
+}
+function Get-BackupPath([string]$Path) {
+    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    $candidate = "${Path}.bak.$timestamp"
+    $suffix = 0
+    while (Test-Path -LiteralPath $candidate) {
+        $suffix++
+        $candidate = "${Path}.bak.$timestamp.$suffix"
     }
+    return $candidate
 }
 
-# Determine source: local checkout or fresh clone.
-# $MyInvocation.MyCommand.Definition returns the pipe string when run via irm|iex,
-# not a file path — so guard against that before calling Split-Path.
-if ($MyInvocation.MyCommand.CommandType -eq 'ExternalScript') {
-    $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
-} else {
-    $SCRIPT_DIR = $null  # running via iex/pipe — no local dir
-}
-if ($SCRIPT_DIR -and (Test-Path (Join-Path $SCRIPT_DIR "skills"))) {
-    $SRC = Join-Path $SCRIPT_DIR "skills"
-    Write-Host "  source: local checkout ($SRC)"
-} else {
-    $TMP = Join-Path $env:TEMP "claude-manager-mode-install-$([System.IO.Path]::GetRandomFileName())"
-    Write-Host "  source: cloning $REPO_URL to temp dir"
-    git clone --depth 1 $REPO_URL $TMP 2>$null
-    $SRC = Join-Path $TMP "skills"
+$claudeDetected = Test-Client "claude" $claudeHome
+$codexDetected = Test-Client "codex" $codexHome
+if ($List) { Show-Detection; exit 0 }
+
+$targets = @()
+if ((-not $Only -or $Only -eq "claude") -and $claudeDetected) { $targets += @{ Name = "claude"; SkillsDir = (Join-Path $claudeHome "skills") } }
+if ((-not $Only -or $Only -eq "codex") -and $codexDetected) { $targets += @{ Name = "codex"; SkillsDir = (Join-Path $codexHome "skills") } }
+if ($targets.Count -eq 0) {
+    if ($Only) { Write-Output "Requested client '$Only' was not detected; nothing installed." }
+    else { Write-Output "No supported clients detected; nothing installed." }
+    exit 0
 }
 
-foreach ($skill in $SKILLS) {
-    $dest = Join-Path $SKILLS_DIR $skill
-    if (Test-Path $dest) {
-        $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-        $backup = "${dest}.bak.$timestamp"
-        Write-Host "  ${skill}: existing install found, backing up to $(Split-Path -Leaf $backup)"
-        Move-Item $dest $backup
+$tmp = $null
+$stageRoot = $null
+try {
+    if ($MyInvocation.MyCommand.CommandType -eq 'ExternalScript') { $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition }
+    else { $scriptDir = $null }
+    if ($scriptDir -and (Test-Path (Join-Path $scriptDir "skills"))) {
+        $src = Join-Path $scriptDir "skills"
+        $sourceLabel = "local checkout ($src)"
+    } else {
+        $tmp = Join-Path ([System.IO.Path]::GetTempPath()) "manager-mode-install-$([System.IO.Path]::GetRandomFileName())"
+        Write-Output "Source: cloning $REPO_URL to temporary directory"
+        git clone --depth 1 $REPO_URL $tmp | Out-Null
+        $src = Join-Path $tmp "skills"
+        $sourceLabel = "fresh clone"
     }
-    Copy-Item -Recurse (Join-Path $SRC $skill) $dest
-    Write-Host "  ${skill}: installed"
+    foreach ($skill in $Skills) {
+        if (-not (Test-Path (Join-Path $src "$skill\SKILL.md") -PathType Leaf)) { throw "Invalid source: missing $src\$skill\SKILL.md" }
+    }
+    if ($DryRun) {
+        Write-Output "Dry run: source $sourceLabel"
+        foreach ($target in $targets) { Write-Output "Would install $($Skills -join ', ') for $($target.Name) into $($target.SkillsDir)" }
+        exit 0
+    }
+    $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) "manager-mode-stage-$([System.IO.Path]::GetRandomFileName())"
+    $stageSkills = Join-Path $stageRoot "skills"
+    New-Item -ItemType Directory -Force -Path $stageSkills | Out-Null
+    foreach ($skill in $Skills) { Copy-Item -Recurse -Path (Join-Path $src $skill) -Destination (Join-Path $stageSkills $skill) }
+    foreach ($target in $targets) {
+        Write-Output "Installing for $($target.Name) into $($target.SkillsDir)"
+        New-Item -ItemType Directory -Force -Path $target.SkillsDir | Out-Null
+        foreach ($legacy in $Legacy) {
+            $legacyPath = Join-Path $target.SkillsDir $legacy
+            if (Test-Path -LiteralPath $legacyPath) {
+                $backup = Get-BackupPath $legacyPath
+                Move-Item -LiteralPath $legacyPath -Destination $backup
+                Write-Output "  $legacy: backed up to $(Split-Path -Leaf $backup)"
+            }
+        }
+        foreach ($skill in $Skills) {
+            $dest = Join-Path $target.SkillsDir $skill
+            if (Test-Path -LiteralPath $dest) {
+                $backup = Get-BackupPath $dest
+                Move-Item -LiteralPath $dest -Destination $backup
+                Write-Output "  $skill: backed up to $(Split-Path -Leaf $backup)"
+            }
+            Copy-Item -Recurse -Path (Join-Path $stageSkills $skill) -Destination $dest
+            Write-Output "  $skill: installed"
+        }
+    }
+    Write-Output "Done. Restart or refresh each installed client, then invoke /manager-mode."
+} finally {
+    if ($stageRoot) { Remove-Item -Recurse -Force $stageRoot -ErrorAction SilentlyContinue }
+    if ($tmp) { Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue }
 }
-
-if ($TMP) { Remove-Item -Recurse -Force $TMP -ErrorAction SilentlyContinue }
-
-Write-Host ""
-Write-Host "Done. Restart Claude Code, then try:"
-Write-Host "  /manager-mode"
