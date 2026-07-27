@@ -421,7 +421,7 @@ def _load_contract_symbols(root: Path, contract_path: str) -> set[str] | None:
     return syms
 
 
-SPEC_LINK_RE = re.compile(r"^(?:#|--)\s*spec:\s*\S+::.+?::AC-\d+", re.MULTILINE)
+SPEC_LINK_RE = re.compile(r"^(?:#|--|//)\s*spec:\s*\S+::.+?::AC-\d+", re.MULTILINE)
 
 
 def check_spec_link(briefs: list[Brief], root: Path) -> list[Failure]:
