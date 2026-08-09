@@ -8,7 +8,9 @@ Each project that uses the cascade places a `.claude-swarm.toml` at its project 
 # Paths — all relative to project root unless noted
 
 spec_dir          = "specs/"
-briefs_dir        = ".swarm/briefs/"
+briefs_dir        = ".swarm/<cascade-slug>/briefs/"  # <cascade-slug> auto-derives from
+                     # the spec's <name> (Phase 0.1/0.2), normalized to lowercase
+                     # hyphen-case. Override explicitly to force a flat/shared dir.
 questions_dir     = ".swarm/questions/"   # leaves publish here, parent reads
 answers_dir       = ".swarm/answers/"     # parent publishes here, leaves consume
 proposals_dir     = ".swarm/proposals/"   # leaves propose parent-owned-file changes
@@ -63,6 +65,21 @@ extra_spec_gate_cmds = []
 #   "grep -q '^## Compliance Report' \"$SPEC_FILE\"",
 # ]
 ```
+
+### Cascade-slug derivation for `briefs_dir`
+
+If `briefs_dir` is not explicitly set in `.claude-swarm.toml`, `/manager-mode`
+derives it as `.swarm/<cascade-slug>/briefs/`, where `<cascade-slug>` is the
+spec's `<name>` (the `<spec_dir>/<name>.md` filename stem from Phase 0.2),
+lowercased, with runs of whitespace/underscore collapsed to a single hyphen
+and any character outside `[a-z0-9-]` stripped. If no spec name is yet known
+(bootstrap case — spec doesn't exist on disk yet), Phase 0.1 asks the user
+for a short slug directly, same "do not guess" discipline as its other
+required fields.
+
+An explicit `briefs_dir` in the config always wins — this derivation only
+fills the default. Existing projects with a bare `.swarm/briefs/` already
+set keep working unchanged; nothing about this is a breaking migration.
 
 ## Defaults
 

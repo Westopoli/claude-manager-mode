@@ -1,0 +1,26 @@
+# claude-manager-mode — project config (rung E4, phaseE leaf-ceiling-v2)
+spec_dir            = "../../"
+briefs_dir          = ".swarm/briefs/"
+type_contract_path  = ""
+
+umbrella_test_cmd = "python3 -m pytest tests/"
+graphify_cmd      = ""
+
+parent_owned = [
+  "src/**/types.py",
+  "tests/conftest.py",
+  "tests/umbrella*.py",
+  "tests/integration/**",
+]
+
+[invariants]
+max_impl_lines      = 2500
+max_test_assertions = 75
+ambiguous_verbs = [
+  "decide", "choose", "design", "determine",
+  "figure out", "resolve", "as appropriate",
+  "use your judgment", "pick", "select an approach",
+]
+
+[gates]
+extra_spec_gate_cmds = []

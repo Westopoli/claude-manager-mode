@@ -1,0 +1,27 @@
+# claude-manager-mode — project config (rung E3)
+spec_dir            = "specs/"
+briefs_dir           = ".swarm/briefs/"
+type_contract_path   = "src/contract.py"
+
+umbrella_test_cmd    = "python3 -m pytest tests/umbrella.py -v"
+graphify_cmd         = ""
+
+parent_owned = [
+  "src/contract.py",
+  "specs/**",
+  "tests/conftest.py",
+  "tests/umbrella*.py",
+  "tests/integration/**",
+]
+
+[invariants]
+max_impl_lines      = 1900
+max_test_assertions = 65
+ambiguous_verbs = [
+  "decide", "choose", "design", "determine",
+  "figure out", "resolve", "as appropriate",
+  "use your judgment", "pick", "select an approach",
+]
+
+[gates]
+extra_spec_gate_cmds = []

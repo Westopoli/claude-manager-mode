@@ -1,0 +1,6 @@
+briefs_dir = ".swarm/briefs/"
+spec_dir = "../../"
+
+[invariants]
+max_impl_lines = 480
+max_test_assertions = 100

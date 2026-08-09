@@ -10,6 +10,8 @@ frontmatter, and validates against the three invariants defined in
     (c) sizing within configured budgets
     (d) spec-link rule (every brief-declared test file begins with a
         `# spec: <path>::<section>::AC-<N>` header)
+    (e) no-contradiction (heuristic — same identifier asserted to two
+        different literal values across sibling briefs, same wave/shard)
 
 Output: one line per brief plus a summary line. Exit code 0 only if all briefs
 pass. Designed to be called from a shell snippet inside SKILL.md so the audit
@@ -48,7 +50,7 @@ DEFAULTS: dict[str, Any] = {
         "tests/integration/**",
     ],
     "invariants": {
-        "max_impl_lines": 200,
+        "max_impl_lines": 1000,
         "max_test_assertions": 20,
         "max_brief_code_lines": 10,
         "ambiguous_verbs": [
@@ -185,6 +187,19 @@ def check_schema(briefs: list[Brief]) -> list[Failure]:
     seen_ids: set[str] = set()
     for b in briefs:
         for field_name in REQUIRED_FIELDS:
+            if field_name in ("test_file", "impl_file"):
+                # Satisfied by the singular field OR a non-empty plural
+                # `*_files` list — a brief legitimately using only the
+                # plural form (e.g. a genuinely 2-file leaf with no single
+                # "primary" file) is not missing anything. Two independent
+                # live runs hit this as a false schema failure before this
+                # fix — see REPORT.md Phase D.
+                plural = b.frontmatter.get(f"{field_name}s")
+                if field_name in b.frontmatter or (isinstance(plural, list) and plural):
+                    continue
+                fails.append(Failure(b.leaf_id, "schema",
+                    f"missing `{field_name}` (and no non-empty `{field_name}s` list either)"))
+                continue
             if field_name not in b.frontmatter:
                 fails.append(Failure(b.leaf_id, "schema",
                     f"missing required field `{field_name}`"))
@@ -198,7 +213,12 @@ def check_schema(briefs: list[Brief]) -> list[Failure]:
 def _leaf_paths(b: Brief, kind: str) -> list[str]:
     """Return all paths a leaf claims for `kind` ('test' or 'impl').
 
-    Combines singular `<kind>_file` + optional plural `<kind>_files`.
+    Combines singular `<kind>_file` + optional plural `<kind>_files`,
+    deduped (order preserved) — a brief that repeats the same path in both
+    fields is not claiming it twice, and check_non_overlap must not treat a
+    brief as colliding with itself over that. Two independent live runs hit
+    this as a false non-overlap failure before the dedup was added — see
+    REPORT.md Phase D.
     """
     out: list[str] = []
     singular = b.frontmatter.get(f"{kind}_file")
@@ -207,7 +227,7 @@ def _leaf_paths(b: Brief, kind: str) -> list[str]:
     plural = b.frontmatter.get(f"{kind}_files") or []
     if isinstance(plural, list):
         out.extend(p for p in plural if isinstance(p, str))
-    return out
+    return list(dict.fromkeys(out))
 
 
 def _wave(b: Brief) -> int:
@@ -319,6 +339,29 @@ SPEC_LINES_RE = re.compile(r"^\d+-\d+$")
 FENCED_CODE_RE = re.compile(r"^[ \t]*```[^\n]*\n(.*?)^[ \t]*```", re.MULTILINE | re.DOTALL)
 
 
+_TASK_HEADING_RE = re.compile(r"^##\s+Task\s*$", re.MULTILINE)
+_NEXT_HEADING_RE = re.compile(r"^##\s+\S", re.MULTILINE)
+
+
+def _extract_task_section(body: str) -> str:
+    """Return the text of the brief's `## Task` section only.
+
+    The ambiguous-verb scan must judge leaf-authored task prose, not the
+    brief-template's own boilerplate (`## Acceptance`, `## Escalation
+    triggers`, `## Assumption log`, etc.) which legitimately uses words
+    like "resolve" or "determine" in instructions to the leaf, not as a
+    delegated design decision. Returns the whole body if no `## Task`
+    heading is found (fails safe toward scanning too much, not too little).
+    """
+    m = _TASK_HEADING_RE.search(body)
+    if not m:
+        return body
+    start = m.end()
+    next_m = _NEXT_HEADING_RE.search(body, start)
+    end = next_m.start() if next_m else len(body)
+    return body[start:end]
+
+
 def _count_fenced_code_lines(body: str) -> int:
     """Sum of non-blank lines inside all fenced code blocks in the brief body.
 
@@ -360,9 +403,12 @@ def check_no_design(
                 if isinstance(bare, str) and bare not in contract_symbols:
                     fails.append(Failure(b.leaf_id, "no-design",
                         f"contract import `{sym}` not in locked contract"))
-        # body prose scanned for ambiguous verbs
+        # Task-section prose scanned for ambiguous verbs (not the whole
+        # body — Acceptance/Escalation/Assumption-log boilerplate can
+        # legitimately use these words without delegating a design decision)
+        task_prose = _extract_task_section(b.body)
         for pat in verb_patterns:
-            m = pat.search(b.body)
+            m = pat.search(task_prose)
             if m:
                 fails.append(Failure(b.leaf_id, "no-design",
                     f"task prose contains ambiguous verb `{m.group(0)}` — "
@@ -451,6 +497,43 @@ def check_spec_link(briefs: list[Brief], root: Path) -> list[Failure]:
     return fails
 
 
+_CONTRADICTION_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*==\s*(-?\d+\.?\d*)")
+
+
+def check_no_contradiction(briefs: list[Brief], root: Path) -> list[Failure]:
+    """Best-effort heuristic: flag the same identifier asserted to two different
+    literal values across sibling (same wave/shard) briefs' test files — a rule
+    stated two ways with no stated ground truth, left for a leaf to guess at.
+    Not an exhaustive contradiction prover; catches the C3-class defect (see
+    playbook.md) cheaply before any leaf spawns.
+    """
+    groups: dict[tuple[int, str], list[Brief]] = {}
+    for b in briefs:
+        groups.setdefault((_wave(b), _shard(b)), []).append(b)
+    fails: list[Failure] = []
+    for group in groups.values():
+        seen: dict[str, tuple[str, str, str]] = {}  # identifier -> (value, leaf_id, path)
+        for b in group:
+            for path in _leaf_paths(b, "test"):
+                p = root / path
+                if not p.exists():
+                    continue
+                for line in p.read_text().splitlines():
+                    if "assert" not in line:
+                        continue
+                    for ident, val in _CONTRADICTION_RE.findall(line):
+                        prior = seen.get(ident)
+                        if prior is None:
+                            seen[ident] = (val, b.leaf_id, path)
+                        elif prior[0] != val and prior[1] != b.leaf_id:
+                            fails.append(Failure(b.leaf_id, "no-contradiction",
+                                f"`{ident} == {val}` in {path} contradicts "
+                                f"`{ident} == {prior[0]}` asserted by {prior[1]} "
+                                f"in {prior[2]} — same wave/shard, unresolved "
+                                f"before any leaf spawns"))
+    return fails
+
+
 def check_sizing(briefs: list[Brief], invariants: dict[str, Any]) -> list[Failure]:
     fails: list[Failure] = []
     max_lines = int(invariants["max_impl_lines"])
@@ -476,7 +559,18 @@ def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
     # (concurrent shards — see "Shard-based parallelism" in SKILL.md). A
     # project with no shards has zero matches for the second glob, so this
     # is a no-op for every existing single-wave setup.
-    paths = sorted(briefs_dir.glob("leaf-*.md")) + sorted(briefs_dir.glob("shard-*/leaf-*.md"))
+    #
+    # `path.stem` on a real brief ("leaf-03.md") has no dot ("leaf-03"). The
+    # brief template's own convention for sidecar files — leaf-03.ASSUMPTIONS.md,
+    # leaf-03.ESCALATION.md, leaf-03.RESULT.md — all match the `leaf-*.md`
+    # glob too, since `*` is greedy across dots, and get misparsed as
+    # malformed briefs (no frontmatter) otherwise. Filter them out by the
+    # dot they always carry that a real leaf id never does.
+    paths = sorted(
+        p for p in briefs_dir.glob("leaf-*.md") if "." not in p.stem
+    ) + sorted(
+        p for p in briefs_dir.glob("shard-*/leaf-*.md") if "." not in p.stem
+    )
     for path in paths:
         b = parse_brief(path)
         if b is None:
@@ -493,6 +587,7 @@ def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
     ))
     rpt.failures.extend(check_sizing(rpt.briefs, cfg["invariants"]))
     rpt.failures.extend(check_spec_link(rpt.briefs, root))
+    rpt.failures.extend(check_no_contradiction(rpt.briefs, root))
     return rpt
 
 

@@ -2,7 +2,9 @@
 # Place at project root. Delete keys to inherit defaults.
 
 spec_dir          = "specs/"
-briefs_dir        = ".swarm/briefs/"
+briefs_dir        = ".swarm/briefs/"  # explicit here; delete this line to get
+                                        # the auto-derived .swarm/<cascade-slug>/briefs/
+                                        # default instead (see config.md)
 type_contract_path = "src/<pkg>/types.py"
 
 umbrella_test_cmd = "pytest tests/umbrella.py"
@@ -16,13 +18,23 @@ parent_owned = [
 ]
 
 [invariants]
-max_impl_lines      = 200
+max_impl_lines      = 1000 # ceiling on a leaf Phase 2.2 already judged coherent,
+                            # not a sizing input — raise toward 1500 as needed,
+                            # 2500 is a hard stop (Phase 2.4). See playbook.md Sizing.
 max_test_assertions = 20
 ambiguous_verbs = [
   "decide", "choose", "design", "determine",
   "figure out", "resolve", "as appropriate",
   "use your judgment", "pick", "select an approach",
 ]
+
+[complexity]
+max_cyclomatic = 10   # per-function decision-point count (if/elif/for/while/
+                       # except/and/or/ternary, +1 base); SonarQube/CodeClimate
+                       # both default here, NASA JPL Power-of-10 hard-caps at 15
+max_nesting     = 3    # per-function max block depth; 4th level flags, matching
+                       # CodeClimate's nested-control-flow limit and Linux kernel
+                       # style ("more than 3 levels, fix your program")
 
 [gates]
 extra_spec_gate_cmds = []

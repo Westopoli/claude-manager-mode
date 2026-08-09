@@ -1,0 +1,4 @@
+spec_dir           = "specs/"
+briefs_dir         = ".swarm/briefs/"
+type_contract_path = ""
+umbrella_test_cmd  = "python3 -m pytest tests/"

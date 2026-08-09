@@ -58,15 +58,16 @@ In a brief, design-decision risk shows up as:
 
 These are caught at audit time, not at execution time.
 
-### 3. Sizing — one leaf, one slice
+### 3. Sizing — one leaf, one slice, and prefer fewer files over more
 
-A leaf must be small enough that the agent can finish it in one pass without intermediate decisions. The unit is fixed: **one test file + one impl file.** Concretely:
+A leaf must be small enough that the agent can finish it in one pass without intermediate decisions. The unit is fixed: **one test file + one (or a small number of) impl file(s).** Two sizing signals matter, and they are not interchangeable:
 
-- Impl line budget (default 200, configurable).
-- Test assertion count (default 20, configurable).
-- No internal branching across unrelated behaviors.
+- **Impl line budget** (default 1000, configurable) — a ceiling on a leaf Phase 2.2's consolidation pass already judged coherent, not a sizing input itself. Raise toward 1500 as needed; past 2500 is a hard stop requiring explicit user confirmation (Phase 2.4). All three numbers provisional pending validation beyond H2's tested 585-LOC ceiling.
+- **File count** — the stronger cost driver in practice: token usage correlates with the number of files a leaf/wave touches more than with raw LOC concentrated in one file (see `experiments/scaling-test/REPORT.md`, Phase E vs. Phase F). All else equal, prefer slicing along fewer, larger, single-owner files over more, smaller ones, provided the file still maps to one coherent responsibility and the impl-line budget for that file is raised to match (do not silently exceed the configured budget — raise it explicitly for that brief and record why).
 
-If the slice exceeds the budget, it is two leaves, not one. The parent re-slices.
+If the *responsibility* itself doesn't factor into one coherent piece (two genuinely unrelated concerns), split into two leaves regardless of line count — sizing by LOC alone can hide a responsibility-boundary problem a file-count-only read would miss. If it's one coherent responsibility that's just larger, prefer raising that leaf's line budget over fragmenting it into siblings whose only reason to be separate is the old default ceiling.
+
+Phase G (`experiments/scaling-test/phaseG-isolated-single-file/`) is the properly-isolated validation of this preference — G1-G4 held under genuine 3-agent isolation with zero unresolved defects (largest file 339 LOC, mean budget utilization 46%), never finding an actual ceiling. Phase H (`experiments/scaling-test/phaseH-ceiling-search/`) pushes rungs deliberately far past G4's scale to look for where one actually exists; G9 (the cyclomatic-complexity/nesting-depth admission gate, Phase 6.5) is the mechanical backstop in the meantime, in case a large single file trades LOC headroom for tangled control flow LOC alone wouldn't catch.
 
 ---
 
@@ -74,7 +75,11 @@ If the slice exceeds the budget, it is two leaves, not one. The parent re-slices
 
 ### Parent
 
-Writes the spec; writes the shared type contract; writes the umbrella test (and confirms RED); slices into leaf briefs; admits leaf diffs one at a time; reruns the umbrella after each admission. Never writes impl code.
+Writes the spec; writes the shared type contract; writes the umbrella test (and confirms RED); slices into leaf briefs; admits leaf diffs one at a time; reruns the umbrella after each admission. Never writes impl code, never writes per-leaf tests (that's the shard test-writer's job — a parent grading its own leaf tests is the same self-enhancement bias the cascade forbids leaves from having).
+
+### Shard test-writer
+
+One per shard, always spawned separately from the parent, even for a single-wave run with no shard. Given the locked spec/contract and that shard's brief set only — writes every per-leaf test in the shard, confirms each RED, never touches impl, never sees sibling shards' briefs. When a leaf's brief declares 2+ `impl_files`, its test must include one interaction assertion (does the orchestrator actually call the collaborator?) alongside the state checks — a leaf never gets to be the only thing that verifies its own resolution of an ambiguity.
 
 ### Leaf
 

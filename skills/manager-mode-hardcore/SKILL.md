@@ -1,55 +1,48 @@
 ---
 name: manager-mode-hardcore
-description: Stricter sibling of /manager-mode for delicate, high-consequence codebases where an extra verification pass is worth the token cost — production data pipelines, payment/auth code, migrations, anything where a wrong admit is expensive to unwind. It retains the complete normal Manager Mode builder, sweep, and G1–G7 admission flow, then double-audits admitted leaves in batches of at most three and sends each pair of reports to a fresh adjudicating reviewer. Use when the user says things like "this is delicate, use hardcore mode", "I want a stricter cascade for this", "run manager-mode-hardcore", "this touches production data, double-check everything before it lands", or is working somewhere a silent bad admit would be costly to discover later. Do not use for ordinary feature work — use /manager-mode instead.
+description: Stricter sibling of /manager-mode for delicate, high-consequence codebases where an extra verification pass is worth the token cost — production data pipelines, payment/auth code, migrations, anything where a wrong admit is expensive to unwind. It retains the complete normal Manager Mode builder, sweep, and G1–G9 admission flow (G8's mutation findings and G9's complexity findings both block here, not just advisory), then doubles the pre-impl test audit — two independent fresh-context test-auditors per shard, adjudicated by a third — before any leaf spawns. Use when the user says things like "this is delicate, use hardcore mode", "I want a stricter cascade for this", "run manager-mode-hardcore", "this touches production data, double-check everything before it lands", or is working somewhere a silent bad admit would be costly to discover later. Do not use for ordinary feature work — use /manager-mode instead.
 ---
 
-# /manager-mode-hardcore — post-admission double evidence audit
+# /manager-mode-hardcore — doubled pre-impl test audit
 
-Hardcore is `/manager-mode` with one deliberately narrow replacement: its post-admission Phase 8 uses two independent auditors plus a fresh reviewer for each batch of at most three admitted leaves. It does **not** move review before admission and does not remove any normal safeguard.
+Hardcore is `/manager-mode` with one deliberately narrow replacement: its Phase 3.4 test-quality audit uses two independent auditors plus a fresh adjudicating reviewer per shard, instead of base's single auditor. It does **not** add any post-admission review and does not remove any normal safeguard — hardcore's extra rigor is spent entirely on catching a bad test before any leaf ever implements against it, which is strictly cheaper than catching it after N leaves have already run.
 
-Theory, brief template, and config schema use the same shared assets as `/manager-mode`. Resolve `SWARM_SHARED_DIR` with `/manager-mode`'s Shared asset resolver, then use `$SWARM_SHARED_DIR/references/playbook.md`, `brief-template.md`, and `config.md`. Nothing here duplicates those; Hardcore only changes the post-admission adversarial check and how many roles participate.
+Theory, brief template, and config schema use the same shared assets as `/manager-mode`. Resolve `SWARM_SHARED_DIR` with `/manager-mode`'s Shared asset resolver, then use `$SWARM_SHARED_DIR/references/playbook.md`, `brief-template.md`, and `config.md`. Nothing here duplicates those; Hardcore only changes Phase 3.4 and how many roles participate in it.
 
-Read `/manager-mode` first and execute its Phases 0–7 unchanged: preflight, lite-discovery, per-leaf RED tests, Phase 3 invariant audit, 12/16 sizing limits, parent ownership, staging, parallel builder dispatch, snapshot/sweep, questions/proposals, bypass detection, G1–G7, file-match, umbrella pre/post checks, admit-or-revert, apex testing, reporting, and shard non-overlap. In particular, run the normal admission loop before any hardcore review batch.
+Read `/manager-mode` first and execute its Phases 0–7 unchanged EXCEPT Phase 3.4, which this file replaces: preflight, lite-discovery, shard-test-writer per-leaf RED tests, the rest of Phase 3's invariant audit (non-overlap, no-design, no-contradiction, sizing, spec-link, codebase-preconditions), dependency map + consolidation pass + 16-leaf sizing limit, parent ownership, staging, parallel builder dispatch, snapshot/sweep, questions/proposals, bypass detection, G1–G9, file-match, umbrella pre/post checks, admit-or-revert, apex testing, and reporting.
 
-## Phase 8 — Double audit, then adjudicate
+Two differences within that unchanged flow: G8 (`test_quality_gate.py`) and G9 (`complexity_gate.py`) both run with `--strict` here, so a mutation finding or a complexity/nesting finding blocks admission the same as a reachability finding — hardcore's whole premise is that a wrong admit is expensive, so a heuristic this lite gate happened to catch is worth stopping for even if it might occasionally be an unlucky pick.
 
-For every wave/shard independently, read the normal admission record and select only `status: clean` rows whose `wave` and `shard` columns match the current wave/shard; do not infer membership from reused `leaf-NN` values. A legacy row without those columns is escalation-only. Order the selected leaves by ascending `leaf-NN` and group them into deterministic batches of at most three. `batch-01` contains the first one to three leaves, `batch-02` the next, and so on. A shard's audit records live at:
+## Phase 3.4 (hardcore) — Doubled test audit, then adjudicate
 
-```
-.swarm/audits/wave-<wave>/<shard-or-default>/batch-<NN>/
-```
-
-Each batch directory begins with `AUDIT-BRIEF.md`, written by the overlord. It records the ordered membership, declared implementation/test footprint, locked spec, relevant contract/umbrella paths, user ask, sweep and dismissal context, and the rule that parent-owned files, contracts, umbrella tests, and paths outside the footprint are escalation-only.
-
-### 8.1 Two independent auditors
-
-Spawn two fresh-context auditors for each batch in parallel, and dispatch batches in parallel. Neither auditor may see the other auditor's prompt, report, reasoning, or findings. Use `caveman:cavecrew-reviewer` where available; otherwise use a fresh `general-purpose` reviewer with the same adversarial instruction.
-
-Both auditors receive only `AUDIT-BRIEF.md`, the locked artifacts it names, and the batch's admitted code/tests. They never edit files. Their posture and report requirements are identical:
+Runs where base `/manager-mode`'s single-auditor 3.4 would run: once a shard's tests exist (2.6) and pass the invariant audit (3.0–3.3), before any leaf spawns. Records live at:
 
 ```
-Assume the batch's admission is wrong until executable evidence proves otherwise.
-Review goal fidelity, test coverage, integration behavior, and code quality.
-For every finding, provide a concrete test/probe command, observed output, and
-source or locked-spec citation. A claim without all three is unverified.
-Do not manufacture findings. Do not edit. Mark any needed repair outside the
-declared batch implementation/test footprint as ESCALATION-ONLY.
+.swarm/audits/wave-<wave>/<shard-or-default>/
 ```
 
-Persist the reports as `auditor-1.md` and `auditor-2.md`. Fresh context and disk-only reports are mandatory: the second auditor must not inherit the first auditor's framing.
+The overlord writes `TEST-AUDIT-BRIEF.md` exactly as base 3.4.1 describes (umbrella test, shard's stated goal + brief set, tests under audit, composition-relevant contract excerpts, sibling-shard awareness, anything already litigated).
 
-If either report is missing, malformed, or arrives after the configured wait/retry limit, do not spawn the reviewer and do not report the batch or final suite as successful. Persist `AUDIT-FAILURE.md` with the missing role, wait/retry evidence, and an escalation; include the batch as failed/escalated in the final post-mortem.
+### 3.4.1 (hardcore) Two independent test-auditors
 
-### 8.2 Fresh reviewer adjudication
+Spawn two fresh-context auditors per shard in parallel, and dispatch shards in parallel (shards already don't share footprint). Neither auditor may see the other's prompt, report, reasoning, or findings. Use `caveman:cavecrew-reviewer` where available; otherwise a fresh `general-purpose` reviewer with the same adversarial instruction.
 
-Only after both reports exist, spawn a third fresh-context reviewer for that batch. Give it `AUDIT-BRIEF.md`, both reports, code/tests, locked spec, and runnable commands. It independently evaluates **every** auditor claim; it does not trust either auditor just because they agree.
+Both receive only `TEST-AUDIT-BRIEF.md` and the tests under audit. They never edit files. Posture and report requirements are identical to base 3.4.2's three checks (goal fidelity, umbrella alignment, test quality), with the same evidence requirement: every finding needs a quote from the test, the umbrella, or the spec.
 
-For every claim, it records `CONFIRMED`, `DENIED`, `UNVERIFIED`, or `ESCALATION-ONLY`, plus its own source/spec citation, probe, observed output, and rationale. It may implement only confirmed repairs within the batch's declared implementation/test footprint. It may add or adjust that batch's leaf tests only to pin confirmed behavior. A required change to a parent-owned file, contract, umbrella, or out-of-footprint path halts that item for overlord/user escalation rather than widening scope.
+Persist reports as `test-auditor-1.md` and `test-auditor-2.md` in the shard's audit directory. Fresh context and disk-only reports are mandatory: the second auditor must not inherit the first's framing.
 
-For each confirmed repair the reviewer runs affected leaf tests first, then the configured umbrella/full suite. A failed verification uses the normal backup/revert discipline and is recorded as not accepted. The reviewer writes all verdicts, changed paths, escalations, and verification results to `REVIEW.md` in the batch directory.
+If either report is missing, malformed, or arrives after the configured wait/retry limit, do not spawn the adjudicator and do not report the shard's tests as audit-clean. Persist `AUDIT-FAILURE.md` with the missing role and wait/retry evidence; escalate.
 
-### 8.3 Final reporting
+### 3.4.2 (hardcore) Adjudication
 
-The overlord aggregates `REVIEW.md` files into `.swarm/audits/wave-<wave>/<shard-or-default>/POST-MORTEM.md`. It includes batch membership, two-auditor and reviewer counts, each claim's verdict/evidence, confirmed fixes, denied findings, escalations, changed paths, affected-test outcomes, and final suite status. Update the normal Phase 7 report with those same counts and outcomes.
+Only after both reports exist, spawn a third fresh-context reviewer. Give it `TEST-AUDIT-BRIEF.md`, both reports, the tests under audit, and the umbrella/spec/contract excerpts. It independently evaluates **every** claim from both auditors — does not trust either just because they agree.
 
-No audit record belongs in `post-review-log.md`; it remains the append-only normal-admission history. Shards remain file-disjoint and retain separate wave snapshots, sweeps, audit directories, and batch IDs. No phase may bypass the base skill's existing gates.
+For every claim it records `CONFIRMED`, `DENIED`, or `UNVERIFIED`, plus its own source/spec citation and rationale. It does not implement anything — this is still pre-impl, there is no code to repair yet, only the test. If any claim resolves `CONFIRMED` at 🔴/🟡 severity, the shard's tests are **not** audit-clean: the shard-test-writer (a new fresh spawn) revises the flagged test(s), confirms RED again, and 3.4.1–3.4.2 re-run in full — both auditors again, not just a re-check of the fixed line, since a fix can introduce a new problem the first pass didn't have a reason to look for.
+
+The adjudicator writes its verdict to `TEST-AUDIT-ADJUDICATION.md` in the shard's audit directory.
+
+### 3.4.3 (hardcore) Reporting
+
+The overlord aggregates the shard's audit directory into `.swarm/audits/wave-<wave>/<shard-or-default>/PRE-IMPL-AUDIT-SUMMARY.md`, containing both auditors' report paths, the adjudicator's verdict, any revise-and-re-audit cycles and their count, and final audit-clean status per shard. Update the normal Phase 7 report with those same counts.
+
+No audit record belongs in `post-review-log.md`; it remains the append-only normal-admission history. Shards remain file-disjoint and retain separate wave snapshots and sweeps. No phase may bypass the base skill's existing gates.

@@ -1,0 +1,35 @@
+spec_dir          = "specs/"
+briefs_dir        = ".swarm/briefs/"
+questions_dir     = ".swarm/questions/"
+answers_dir       = ".swarm/answers/"
+proposals_dir     = ".swarm/proposals/"
+type_contract_path = ""
+
+umbrella_test_cmd = "python3 -m pytest tests/ -v --tb=short"
+apex_test_cmd     = ""
+graphify_cmd      = ""
+
+snapshot_ignore   = [
+  ".git/**", ".swarm/**", "__pycache__/**",
+  "node_modules/**", ".venv/**", "*.pyc",
+]
+
+parent_owned = [
+  "specs/**",
+  "tests/conftest.py",
+  "tests/umbrella*.py",
+  "tests/integration/**",
+]
+
+[invariants]
+max_impl_lines        = 200
+max_test_assertions   = 20
+
+ambiguous_verbs = [
+  "decide", "choose", "design", "determine",
+  "figure out", "resolve", "as appropriate",
+  "use your judgment", "pick", "select an approach",
+]
+
+[gates]
+extra_spec_gate_cmds = []

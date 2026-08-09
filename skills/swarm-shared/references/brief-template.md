@@ -71,6 +71,17 @@ test_assertion_budget: <int>
 #     detect: "! diff <(grep -E '^def ' src/module.py.bak) <(grep -E '^def ' $STAGING_DIR/src/module.py) > /dev/null"
 #   - name: "new_file_creation"
 #     detect: "test ! -f src/new_module.py"   # exits 0 if file is new
+# Optional: function/class names in this leaf that are intentionally NOT part
+# of the composition chain — a real, separately-tested utility bundled into
+# a multi-file leaf on purpose (see this file's "legitimately spans multiple
+# files" note above), not something the orchestrator forgot to wire in. G8's
+# reachability check (test_quality_gate.py) has no way to infer this from
+# code shape alone — a function called only by its own ordinary state-check
+# test looks identical whether it's a deliberate standalone utility or an
+# orphaned duplicate of what the orchestrator should be calling. Declare it
+# here instead of gaming the check with fake interaction-assertion syntax.
+# standalone_symbols:
+#   - low_stock_alert
 ---
 
 ## Task
@@ -78,6 +89,16 @@ test_assertion_budget: <int>
 <One-paragraph imperative description. Must reference spec_lines for any
 behavioral claim. Must not contain ambiguous verbs (decide, choose, design,
 determine, figure out, resolve, "as appropriate").
+
+Note on scope: the ambiguous-verb ban (and Phase 4.1's parallel instruction
+to the leaf) is about decisions with external weight — anything a sibling
+leaf or the umbrella test would observe. It is not a ban on the leaf
+choosing internal file structure, helper names, or control-flow shape
+within its own impl_files — that authorship stays with the leaf per this
+template's "Why this template" section below. Don't over-specify internal
+shape in the brief just because the leaf "might" pick something you
+wouldn't — that re-collapses the parallelism payoff this template exists
+to protect.
 
 Must NOT contain ready-to-paste implementation bodies — the leaf authors the
 body. Permitted shape-carriers in the brief:
@@ -93,6 +114,13 @@ body. Permitted shape-carriers in the brief:
 Embedding a full implementation collapses the parallelism payoff: the parent
 absorbs leaf work and the leaf becomes a copy-paste courier. Audit blocks
 briefs whose fenced code exceeds `max_brief_code_lines`.>
+
+**Composition rule for the test author (mockist)**: if this brief's `impl_files`
+has 2+ entries, its test must assert at least one interaction — that the
+orchestrating file actually calls the collaborator file(s) — not just final
+output state. State-only tests can't distinguish a wired-in implementation
+from an orphaned one sitting next to it. G8 in Phase 6 checks reachability
+mechanically as a backstop; this assertion is the first line of defense.
 
 ## Acceptance
 
@@ -247,4 +275,4 @@ A brief that fails any of these checks blocks the entire decomposition. The pare
 
 ## Why this template
 
-The brief is the contract between parent and leaf. If the parent encodes the slice correctly here, the leaf has no surface on which to make a **design** decision **but retains full authorship of the body.** Encoding *shape* — spec_lines refs, contract_imports, stub signatures, mirror-pointers, invariants — removes ambiguity without removing authorship. Encoding the *body* — pasting a ready-to-run implementation — removes authorship along with ambiguity, which collapses the parallelism payoff: parent absorbs leaf work, leaf becomes a copy-paste courier, the cascade pays the cost of decomposition for none of the leverage. If the parent encodes incorrectly (ambiguity OR over-specification), the audit catches it before any leaf spawns. Both failure modes (toes-stepping, design-leak) reduce to malformed briefs; sizing is the third axis the budgets enforce.
+The brief is the contract between parent and leaf. If the parent encodes the slice correctly here, the leaf has no surface on which to make a **design** decision **but retains full authorship of the body.** Encoding *shape* — spec_lines refs, contract_imports, stub signatures, mirror-pointers, invariants — removes ambiguity without removing authorship. Encoding the *body* — pasting a ready-to-run implementation — removes authorship along with ambiguity, which collapses the parallelism payoff: parent absorbs leaf work, leaf becomes a copy-paste courier, the cascade pays the cost of decomposition for none of the leverage. If the parent encodes incorrectly (ambiguity OR over-specification), the audit catches it before any leaf spawns. Both failure modes (toes-stepping, design-leak) reduce to malformed briefs; sizing is the third axis the budgets enforce. Internal implementation choices with no external observer are authorship, not ambiguity — the leaf owns them regardless of file size.
