@@ -82,6 +82,14 @@ test_assertion_budget: <int>
 # here instead of gaming the check with fake interaction-assertion syntax.
 # standalone_symbols:
 #   - low_stock_alert
+# Optional: set both on a leaf that owns a hot path named in the spec's
+# Scale & Boundary Profile. `growth_claim` is copied from that profile, not
+# invented here. `scale_assertions: true` tells /manager-mode Phase 6.5 G10
+# to check the test actually compares two input sizes and asserts a ratio —
+# a single-size measurement cannot detect a growth-rate regression. Bands
+# and the assertion recipe: swarm-shared/references/test-design.md.
+# growth_claim: linear-ish      # sublinear | linear-ish | quadratic-ok
+# scale_assertions: true
 ---
 
 ## Task
@@ -114,6 +122,12 @@ body. Permitted shape-carriers in the brief:
 Embedding a full implementation collapses the parallelism payoff: the parent
 absorbs leaf work and the leaf becomes a copy-paste courier. Audit blocks
 briefs whose fenced code exceeds `max_brief_code_lines`.>
+
+**Boundary + scale rule for the test author**: walk the CORRECT sweep in
+`swarm-shared/references/test-design.md` over this brief's contract symbols, record
+the result in the shard's `BOUNDARIES.md`, and escalate any boundary the spec does
+not pin rather than guessing it. If this brief sets `scale_assertions: true`, at
+least one test must assert a growth ratio across two input sizes.
 
 **Composition rule for the test author (mockist)**: if this brief's `impl_files`
 has 2+ entries, its test must assert at least one interaction — that the
@@ -266,6 +280,7 @@ Never copy the parent-owned file into your impl as a workaround. Duplication is 
 | `impl_line_budget`, `test_assertion_budget` | Set, ≤ project max from `.claude-swarm.toml`. |
 | `codebase_preconditions` (optional) | Each `verify:` command exits 0. If task prose contains claim-words ("already", "in place", "exists as of", "previously added") without backing preconditions, Phase 3.1 heuristic-warns. |
 | `escalation_triggers` (optional) | Each `detect:` command (if present) is well-formed shell. Runtime check is Phase 6.5 G6. |
+| `growth_claim`, `scale_assertions` (optional) | `growth_claim` is one of `sublinear` / `linear-ish` / `quadratic-ok`, matching the spec's Scale & Boundary Profile. Runtime check is Phase 6.5 G10. |
 | Task prose | No ambiguous verbs from the configured list. |
 | Task fenced code | Total non-blank lines across all fenced code blocks ≤ `max_brief_code_lines` (default 10). Stub signatures + mirror-pointer snippets allowed; full impl bodies blocked. Forces parent to encode shape, not authorship. |
 

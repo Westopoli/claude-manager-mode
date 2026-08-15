@@ -16,14 +16,19 @@ uses for reachability):
 
 Unlike G8, runs on every leaf regardless of impl_files count — a
 single-file leaf has just as much per-function complexity to measure, and
-the redesign's large-single-file preference (playbook.md Sizing §3) makes
-single-file leaves the MORE likely place complexity accumulates.
+the large-single-file preference (playbook.md Sizing §3) makes single-file
+leaves the MORE likely place complexity accumulates.
 
 Both finding kinds advisory by default — a high score isn't proof of a
-defect the way G8's reachability is; this is a new, uncalibrated heuristic.
-Pass --strict (hardcore does) to block on findings. See
-experiments/scaling-test/phaseH-ceiling-search/ for the complexity-vs-LOC
-evidence these thresholds should be recalibrated against as it accumulates.
+defect the way G8's reachability is. Pass --strict (hardcore does) to block
+on findings.
+
+Calibration, measured over experiments/scaling-test/phaseH-ceiling-search/
+rungs H1-H3 (72 functions, 1583 LOC of real cascade output): cyclomatic
+mean 3.1, p90 5-6, peaking at exactly 10 in two of three rungs and never
+exceeding it — so max_cyclomatic=10 sits right on the natural ceiling.
+Nesting never reached 3 (mean 1.0, max 2), so max_nesting=3 has never had
+the chance to fire; treat it as untested rather than calibrated.
 
 Exit codes: 0 = pass/SKIP (no impl_files or leaf not found), 1 = findings
 with --strict, 2 = usage/config error.
@@ -234,9 +239,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-nesting", type=int, default=3)
     p.add_argument(
         "--strict", action="store_true",
-        help="block admission on findings (default: advisory-only — an "
-             "uncalibrated heuristic new to this redesign; use under "
-             "manager-mode-hardcore or once phaseH evidence supports blocking)")
+        help="block admission on findings (default: advisory-only — a high "
+             "score is not proof of a defect; use under manager-mode-hardcore, "
+             "where a wrong admit is expensive enough to stop for a heuristic)")
     args = p.parse_args(argv)
 
     root = ci.git_root(args.root)

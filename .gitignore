@@ -3,3 +3,8 @@
 __pycache__/
 *.pyc
 .swarm/
+# Test fixtures ship a miniature .swarm/ tree on purpose — the gate scripts
+# read briefs and staged output from it, so ignoring it would make the
+# fixture suites unrunnable on a fresh clone.
+!tests/fixtures/**/.swarm/
+!tests/fixtures/**/.swarm/**

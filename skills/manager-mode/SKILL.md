@@ -7,7 +7,7 @@ description: Single-command parallel-agent TDD cascade. Use when the user wants 
 
 One slash command. The overlord (this chat) drives every phase. Sub-agents only write impl against pre-written failing tests.
 
-The cascade prevents three structural failures in parallel-agent TDD: (1) leaves stepping on each other's files, (2) leaves silently making design decisions, (3) leaves receiving slices too big to finish coherently. Phases 0–7 are the procedure for keeping those guarantees while collapsing the prior 4-command UX into one.
+The cascade prevents three structural failures in parallel-agent TDD: (1) leaves stepping on each other's files, (2) leaves silently making design decisions, (3) leaves receiving slices too big to finish coherently. Phases 0–7 are the procedure for keeping those guarantees.
 
 ## Shared asset resolver
 
@@ -23,16 +23,28 @@ Theory: `$SWARM_SHARED_DIR/references/playbook.md`. Brief template:
 
 ---
 
+## Model defaults
+
+Three roles, three model tiers — pick by what kind of work the role does, not by habit:
+
+- **Overlord (this chat)** — Opus 5. Decomposition (2.2/2.2a), spec/contract/umbrella drafting, and admission judgment calls are synthesis-shaped work where the stronger model earns its cost; this is the one context running for the whole cascade's duration. If the current chat is not already on Opus 5, tell the user before Phase 0 proceeds and let them switch (`/model opus`) — the skill does not switch its own host chat's model.
+- **Shard-test-writer** — Opus 5. Writing a correct, non-tautological test from spec+contract text alone (2.6) is the same judgment-quality bar as decomposition: a weak test here is invisible until a leaf has already implemented against it. Pass `model: "opus"` on the spawn call.
+- **Leaf implementers** — Sonnet 5, always, regardless of which `subagent_type` (Phase 4.2) is picked for a leaf. Implementing against an already-locked, already-audited failing test is bounded, mechanical work by design — that boundedness is the whole point of the brief template (see brief-template.md "Why this template"). Pass `model: "sonnet"` explicitly on every Phase 4 delegation call; do not let it inherit whatever the overlord happens to be running on.
+
+Test-quality auditors (3.4) and dependency-map/consolidation drafting sub-agents (Delegated drafting passes) are unaffected — pick their model the same way as before (no explicit override; inherits caller/tool default).
+
+---
+
 ## Phases at a glance
 
 ```
 Phase 0  Preflight              — find/bootstrap .claude-swarm.toml; list which of {spec, contract, umbrella} exist
 Phase 1  Lite-discovery         — fire only for missing inputs; one-question drafts, Bible Compliance footer on spec
-Phase 2  Decompose              — dependency map + consolidation pass + emit briefs + shard-test-writer authors per-leaf failing tests (Spec Link Rule + composition assertion + task-size guardrail)
-Phase 3  Audit briefs           — run check_invariants.py (incl. contradiction check) + codebase-preconditions + external test-quality audit (goal-fidelity + umbrella-alignment + composition); fix & re-run on FAIL
+Phase 2  Decompose              — dependency map + consolidation pass + emit briefs + shard-test-writer authors per-leaf failing tests (Spec Link Rule + composition assertion + boundary/scale sweep + task-size guardrail)
+Phase 3  Audit briefs           — run check_invariants.py (incl. contradiction check) + codebase-preconditions + external test-quality audit (goal-fidelity + umbrella-alignment + composition + boundary/scale); fix & re-run on FAIL
 Phase 4  Spawn leaves           — N sub-agents in parallel through the client delegation adapter
 Phase 5  Wait + sweep           — wait all green; aggregate assumption-sweep; write .swarm/wave-N.SWEEP.md
-Phase 6  Admission loop         — per leaf: G1–G9 + file-match + umbrella pre/post + admit-or-revert + log
+Phase 6  Admission loop         — per leaf: G1–G10 + file-match + umbrella pre/post + admit-or-revert + log
 Phase 7  Final report           — counts + follow-up direction
 ```
 
@@ -95,13 +107,21 @@ Draft `<spec_dir>/<name>.md`:
 ## Inputs / Outputs / Constraints / Out of scope
 <bullets>
 
+## Scale & Boundary Profile
+- **N typical / N peak:** <e.g. 5k rows typical, 2M peak>
+- **Growth claim per hot path:** <path> is `sublinear` | `linear-ish` | `quadratic-ok`
+- **Memory posture:** streaming | bounded-buffer | full-load-ok
+- **External call budget:** <e.g. one query per request, not per row>
+
 ## Bible Compliance
 - **Bible path:** `<path>` (or "none — this project has no source-of-truth doc")
 - **Sections referenced:** <section names / line refs the spec implements>
 - **Deliberate divergences:** <list any spec line that intentionally diverges from the bible, with the reason. If none: "none.">
 ```
 
-Render the draft to the user. They approve, edit, or restart. Bible Compliance is the one piece of discovery rigor kept from the legacy `/swarm` — the source-of-truth strategy doc cites a real cost from omitting it (a wave shipped four Python stages when the bible specified Postgres; cost an afternoon + 15 leaf agents to re-do). Skipping the footer is acceptable when the project genuinely has no bible; lying that there is none is the failure mode.
+`unbounded-unknown — assert growth only, no absolutes` is a valid answer to the whole Scale & Boundary Profile, the same escape hatch Bible Compliance gives a project with no bible. What is not valid is leaving it out: the shard-test-writer needs a stated growth claim to write a scale assertion against, and without one it would have to invent a number — a design decision made by a sub-agent, which is exactly what 2.6's authorship split exists to prevent.
+
+Render the draft to the user. They approve, edit, or restart. Bible Compliance is the one piece of heavyweight discovery rigor worth keeping — omitting it has a documented cost: a wave shipped four Python stages when the bible specified Postgres, costing an afternoon + 15 leaf agents to re-do. Skipping the footer is acceptable when the project genuinely has no bible; lying that there is none is the failure mode.
 
 If `extra_spec_gate_cmds` is set in `.claude-swarm.toml`, run each command with `$SPEC_FILE` exported. Any non-zero exit blocks Phase 1 — fix and re-run.
 
@@ -141,6 +161,7 @@ If `graphify_cmd` is set, run it. Otherwise do a manual import-graph scan of the
 - **Exception branches** — numbered exception/edge-case sections.
 - **External integrations** — distinct third-party systems touched (webhook, API, storage, email, print, etc).
 - **Cross-cutting concerns** — things re-applied consistently across multiple rule-clusters (audit logging, tiered gates, redaction). The dangerous axis — a leaf can satisfy every individual rule and still violate the cross-cutting one.
+- **Hot paths** — paths the Scale & Boundary Profile gives a growth claim for. A leaf owning a hot path *and* a cross-cutting concern splits: scale bugs are cross-cutting by nature, so the two together is where an implementation satisfies each rule locally and degrades globally.
 
 One leaf, one coherent unit, when: ≤1 cross-cutting concern spans it, ≤2-3 external integrations, and its rule-clusters share one failure domain (a wrong assumption in one can't silently corrupt another's output).
 
@@ -190,6 +211,7 @@ Key brief rules:
 - Task prose: imperative, no ambiguous verbs (decide / choose / design / determine / figure out / resolve / pick).
 - Task fenced code: total non-blank lines across all fenced blocks ≤ `max_brief_code_lines` (default 10). Stub signatures + mirror-pointer snippets only. **Do not embed ready-to-paste impl bodies — the leaf authors the body.** Use shape-carriers instead: `spec_lines` refs, `contract_imports`, mirror-pointers ("match the structure of `path/to/sibling.py`"), invariant statements. Embedding the body collapses parallelism — parent absorbs leaf work, leaf becomes a copy-paste courier. Audit blocks briefs that exceed the ceiling.
 - `impl_line_budget`, `test_assertion_budget`: from `.claude-swarm.toml`; tighten if you can.
+- `growth_claim`, `scale_assertions`: set on any leaf owning a hot path — copy the claim from the spec's Scale & Boundary Profile, and set `scale_assertions: true` so G10 checks the test actually measures growth.
 
 The brief's `## Task` section must instruct the leaf:
 
@@ -197,7 +219,9 @@ The brief's `## Task` section must instruct the leaf:
 
 ### 2.6 Write per-leaf failing tests
 
-Per-leaf tests are **not** written by the overlord directly, with no exception for small or single-wave runs. Spawn one **shard-test-writer** sub-agent per shard with the locked spec/contract and that shard's brief set only. It writes every `test_files` path in that shard, exercising only each leaf's contract symbols, and never touches impl. See `swarm-shared/references/playbook.md` "Roles" for the role's full boundary. This keeps test authorship independent of whichever agent later resolves an ambiguity in impl — the failure mode where a leaf writes a test that only certifies its own guess.
+Per-leaf tests are **not** written by the overlord directly, with no exception for small or single-wave runs. Spawn one **shard-test-writer** sub-agent per shard, on Opus 5 (see "Model defaults" above — pass `model: "opus"` on the spawn call), with the locked spec/contract and that shard's brief set only. It writes every `test_files` path in that shard, exercising only each leaf's contract symbols, and never touches impl. See `swarm-shared/references/playbook.md` "Roles" for the role's full boundary. This keeps test authorship independent of whichever agent later resolves an ambiguity in impl — the failure mode where a leaf writes a test that only certifies its own guess.
+
+**Boundary + scale sweep** — give the shard-test-writer `$SWARM_SHARED_DIR/references/test-design.md` and require the boundary table it specifies at `.swarm/audits/wave-<wave>/<shard-or-default>/BOUNDARIES.md` before its tests count as done. Acceptance criteria describe the happy middle, so tests written from them alone certify the happy middle; the sweep is what forces a second pass over the edges, and its cardinality axis is where a leaf's `growth_claim` turns into an actual assertion. Boundaries the spec pins become tests citing the spec line. Boundaries the spec is **silent** on go to the question ledger (`.swarm/questions/`) — the overlord batches every shard's open boundaries into one block for the user rather than letting the test-writer guess, since a guessed boundary is the same silent design decision this phase's authorship split exists to prevent.
 
 **Composition rule (mockist)** — if a leaf's `impl_files` has more than one entry, its test must include at least one interaction assertion (e.g. monkeypatch/spy proving the orchestrator actually calls the collaborator), not just output-state checks. State-only tests can't tell an unused, orphaned function from a wired-in one. See `brief-template.md`'s test-writing guidance.
 
@@ -264,6 +288,7 @@ Before spawning, write `.swarm/audits/wave-<wave>/<shard-or-default>/TEST-AUDIT-
 - **Umbrella test.** Full text of `umbrella_test_cmd`'s test file(s) — the auditor needs the top-level behavioral contract to judge whether a shard's tests are a coherent decomposition of it, not just traced to a spec line in isolation.
 - **The shard's own stated goal.** The relevant spec Summary + Acceptance Criteria this shard's briefs cover, quoted, plus the shard's brief set (paths + `spec_lines` + `contract_imports` per brief).
 - **The tests under audit.** Full text of every `test_files` path written in 2.6 for this shard.
+- **The shard's `BOUNDARIES.md`** (2.6) and the spec's Scale & Boundary Profile. Without these the auditor can only judge the tests that exist, never the boundary that was swept and then quietly dropped.
 - **Composition-relevant contract excerpts.** Only the locked `type_contract_path` symbols the shard's `contract_imports` reference — not the whole contract file, to keep the package bounded.
 - **Sibling-shard awareness, if relevant.** If a sibling shard's brief set shares a contract symbol or an adjacent AC, name the sibling shard and quote only the overlapping symbol/AC — not its full brief set. Lets the auditor catch a test that only makes sense assuming a cross-shard interface shape nothing else confirms.
 - **Anything already litigated.** Wave-sweep dismissals or yellow-flags touching this shard's territory, so the auditor doesn't re-open a decision the user already made (it may still disagree if it looks wrong).
@@ -294,6 +319,12 @@ Check three things, in order:
 3. TEST QUALITY — traces to spec_lines, isn't tautological, carries the
    composition assertion from brief-template.md's mockist rule when
    impl_files has 2+ entries.
+4. BOUNDARY & SCALE FIDELITY — read BOUNDARIES.md against the tests. Is
+   every boundary it lists either tested or escalated as a question, with
+   none quietly guessed? Where the brief sets scale_assertions, does the
+   test compare two input sizes and assert a ratio, and could a memoizing
+   or test-shaped implementation pass it anyway? Rules and gotchas:
+   swarm-shared/references/test-design.md.
 
 Every finding needs a quote from the test, the umbrella, or the spec —
 "looks thin" is not a finding. Write your report to
@@ -310,7 +341,7 @@ Any 🔴/🟡 finding blocks that shard's leaves from Phase 4 spawn. The shard-t
 
 ## Phase 4 — Spawn leaves
 
-After Phase 3 reports `all PASS`, spawn one sub-agent per brief **in parallel**. Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together (not sequentially) and retain every existing footprint, staging, Phase 5 sweep, and Phase 6 admission gate exactly as written.
+After Phase 3 reports `all PASS`, spawn one sub-agent per brief **in parallel**, every one on Sonnet 5 (`model: "sonnet"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together (not sequentially) and retain every existing footprint, staging, Phase 5 sweep, and Phase 6 admission gate exactly as written.
 
 ### 4.1 Per-leaf prompt shape
 
@@ -356,7 +387,7 @@ a summary of what you staged.
 
 ### 4.2 Subagent type selection
 
-Default to **`general-purpose`** for every impl leaf. `cavecrew-builder`'s toolset is `Read, Edit, Write, Grep, Glob` only — **no `Bash`** — which means it cannot itself run the leaf's test command to confirm RED-then-GREEN; it can only manually trace test-vs-impl by reading, and every leaf that hits this gap has to explicitly flag "I could not execute the tests" rather than give the overlord a real pass/fail signal. That undermines the brief's own Acceptance step ("Confirm RED... Confirm GREEN"), which assumes the leaf itself runs the command. Pick by capability fit, not by habit:
+This picks the *tool profile* (`subagent_type`), not the model — every impl leaf runs on Sonnet 5 regardless of which type below is chosen (see "Model defaults"). Default to **`general-purpose`** for every impl leaf. `cavecrew-builder`'s toolset is `Read, Edit, Write, Grep, Glob` only — **no `Bash`** — which means it cannot itself run the leaf's test command to confirm RED-then-GREEN; it can only manually trace test-vs-impl by reading, and every leaf that hits this gap has to explicitly flag "I could not execute the tests" rather than give the overlord a real pass/fail signal. That undermines the brief's own Acceptance step ("Confirm RED... Confirm GREEN"), which assumes the leaf itself runs the command. Pick by capability fit, not by habit:
 
 - **`general-purpose`** — default choice for a normal impl leaf. Has `Bash`, so it can actually execute `test_file`'s test command before and after implementing, and report a real (not traced) RED→GREEN result. No hard file-count refusal, so brief sizing is governed by `impl_line_budget`/`test_assertion_budget` and the brief's own no-design-decision discipline, not by an incidental tool-selection ceiling.
 - **`caveman:cavecrew-builder`** — optional, narrower-blast-radius alternative for a leaf that is genuinely trivial (single small file, no need for the leaf itself to execute anything — e.g. the overlord or a downstream step will run tests) and where the caveman-compressed report is worth more than execution capability. Needs only `Read, Edit, Write, Grep, Glob` and ≤ 2 impl files (it hard-refuses at 3+). Do not reach for it by default; use it deliberately when its trade-off actually fits the leaf.
@@ -473,7 +504,8 @@ For every staged file path, check it does NOT match any glob in `parent_owned`. 
 - **G5 wave-snapshot integrity** — for every path in `.swarm/wave-<wave>.snapshot.json` that is NOT in this leaf's footprint, recompute SHA-256. Any drift → block (some leaf wrote outside its staging dir).
 - **G6 escalation-trigger** — for every `escalation_triggers:` entry with a `detect:` command in this brief, run the command with `$STAGING_DIR=.swarm/pending/leaf-NN/`. If a trigger fires and no `.swarm/escalations/leaf-NN.md` exists → block.
 - **G8 test-quality gate** (leaves with 2+ `impl_files` only) — run `python "$SWARM_SHARED_DIR/scripts/test_quality_gate.py" --leaf leaf-NN`. Reachability findings (a function nothing in the leaf's own impl calls — an orphaned/unwired implementation) block. Mutation findings (a function whose tests still pass after one mechanical mutation) print as advisory, not blocking by default — a single mutant can miss by bad luck rather than prove the test is weak; pass `--strict` (hardcore does) to block on those too.
-- **G9 complexity gate** (all leaves) — run `python "$SWARM_SHARED_DIR/scripts/complexity_gate.py" --leaf leaf-NN`. Flags any function over `--max-cyclomatic` (default 10) decision points or `--max-nesting` (default 3) block levels. Advisory by default — a high score is not proof of a defect the way G8's reachability is, this is a new, uncalibrated heuristic (see `experiments/scaling-test/phaseH-ceiling-search/` for the evidence it should be recalibrated against) — pass `--strict` (hardcore does) to block on findings.
+- **G9 complexity gate** (all leaves) — run `python "$SWARM_SHARED_DIR/scripts/complexity_gate.py" --leaf leaf-NN`. Flags any function over `--max-cyclomatic` (default 10) decision points or `--max-nesting` (default 3) block levels. Advisory by default — a high score is not proof of a defect the way G8's reachability is — pass `--strict` (hardcore does) to block on findings. Calibration, measured across 72 functions / 1,583 LOC of real cascade output (`experiments/scaling-test/phaseH-ceiling-search/` rungs H1–H3): cyclomatic peaked at exactly 10 and never exceeded it, so 10 sits on the natural ceiling; nesting never reached 3, so that half of the gate is untested rather than calibrated.
+- **G10 scale gate** (all leaves) — run `python "$SWARM_SHARED_DIR/scripts/scale_gate.py" --leaf leaf-NN`. Covers what G9 structurally cannot: G9 scores *cyclomatic* complexity, so `if item in big_list` inside a loop scores 3 and passes clean while running quadratically. Half A flags loop-nested shapes that turn a linear pass quadratic (self-join, membership scan, string concat, re-sort, N+1 IO); Half B, on leaves whose brief sets `scale_assertions: true`, confirms the test compares two input sizes rather than measuring one. Advisory by default, `--strict` (hardcore) blocks — a flagged shape is strong evidence, not proof.
 
 ### 6.6 Umbrella pre-admission
 
@@ -552,6 +584,8 @@ After every leaf in the wave has been processed:
 ### 7.1 Apex test (if configured)
 
 If `apex_test_cmd` is set in `.claude-swarm.toml`, run it. Apex is the behavioral integration test — distinct from `umbrella_test_cmd` (per-leaf isolation). Apex catches the failure mode where every leaf's umbrella passed but the integration composes incorrectly.
+
+**Apex owns absolute numbers; per-leaf tests own ratios only.** Apex is the one place a wall-clock or throughput budget means anything, because it runs alone after the wave. Leaf tests run while up to 16 siblings compete for the same CPU, so a duration threshold there flakes both ways — false RED stalling a wave, false GREEN admitting a quadratic. That is why 2.6's scale assertions are growth ratios: it is the only scale signal parallel spawn leaves intact.
 
 Apex failure does NOT auto-revert (multiple leaves admitted; attributing the failure to one is a separate forensic step). Report the failure + suggest investigation paths (likely candidate: any leaf whose test was source-grep heavy rather than behavioral).
 

@@ -75,15 +75,15 @@ Phase G (`experiments/scaling-test/phaseG-isolated-single-file/`) is the properl
 
 ### Parent
 
-Writes the spec; writes the shared type contract; writes the umbrella test (and confirms RED); slices into leaf briefs; admits leaf diffs one at a time; reruns the umbrella after each admission. Never writes impl code, never writes per-leaf tests (that's the shard test-writer's job — a parent grading its own leaf tests is the same self-enhancement bias the cascade forbids leaves from having).
+Runs on Opus 5. Writes the spec; writes the shared type contract; writes the umbrella test (and confirms RED); slices into leaf briefs; admits leaf diffs one at a time; reruns the umbrella after each admission. Never writes impl code, never writes per-leaf tests (that's the shard test-writer's job — a parent grading its own leaf tests is the same self-enhancement bias the cascade forbids leaves from having).
 
 ### Shard test-writer
 
-One per shard, always spawned separately from the parent, even for a single-wave run with no shard. Given the locked spec/contract and that shard's brief set only — writes every per-leaf test in the shard, confirms each RED, never touches impl, never sees sibling shards' briefs. When a leaf's brief declares 2+ `impl_files`, its test must include one interaction assertion (does the orchestrator actually call the collaborator?) alongside the state checks — a leaf never gets to be the only thing that verifies its own resolution of an ambiguity.
+Runs on Opus 5, same tier as the parent — judging whether a test correctly encodes an ambiguous spec line is the same caliber of call as decomposition, and a weak test here is invisible until a leaf has already built against it. One per shard, always spawned separately from the parent, even for a single-wave run with no shard. Given the locked spec/contract and that shard's brief set only — writes every per-leaf test in the shard, confirms each RED, never touches impl, never sees sibling shards' briefs. When a leaf's brief declares 2+ `impl_files`, its test must include one interaction assertion (does the orchestrator actually call the collaborator?) alongside the state checks — a leaf never gets to be the only thing that verifies its own resolution of an ambiguity.
 
 ### Leaf
 
-Receives one assignment: one test file, one impl file, the spec line range it must satisfy, the DO-NOT-EDIT list, and the contract imports it may use. Runs test → confirms RED → writes minimum impl → confirms GREEN → commits → stops. Never creates files. Never edits anything outside its assignment. Never makes design decisions. On ambiguity, stops and reports — does not guess.
+Runs on Sonnet 5, always — implementing against an already-locked, already-audited failing test is bounded mechanical work by design, not a judgment call, so it doesn't need the heavier tier. Receives one assignment: one test file, one impl file, the spec line range it must satisfy, the DO-NOT-EDIT list, and the contract imports it may use. Runs test → confirms RED → writes minimum impl → confirms GREEN → commits → stops. Never creates files. Never edits anything outside its assignment. Never makes design decisions. On ambiguity, stops and reports — does not guess.
 
 ---
 

@@ -54,6 +54,17 @@ ambiguous_verbs = [
   "use your judgment", "pick", "select an approach",
 ]
 
+[scale]
+# G10 growth bands (Phase 6.5), as the ratio cost(2N)/cost(N). Each sits at
+# the geometric midpoint between the complexity classes it separates, so a
+# class jump fails while ordinary variation does not. `linear_ish`
+# deliberately admits both O(n) (2.0) and O(n log n) (2.2) — they sit 10%
+# apart under doubling, which no measurement resolves reliably.
+# Recipe and rationale: references/test-design.md.
+sublinear    = 1.5   # O(1)=1.0, O(log n)=1.10 pass; O(n)=2.0 fails
+linear_ish   = 3.0   # O(n), O(n log n) pass; O(n^2)=4.0 fails
+quadratic_ok = 6.0   # O(n^2) passes; O(n^3)=8.0 fails
+
 [gates]
 # Optional project-specific gates run by /manager-mode Phase 1.A after the spec draft is approved.
 # Each entry is a shell command. Non-zero exit blocks. Empty list = no extra gates.

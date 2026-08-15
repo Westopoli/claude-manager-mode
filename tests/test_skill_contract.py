@@ -3,11 +3,17 @@
 
 These assertions intentionally test the public, file-based workflow rather than
 an LLM's prose quality. They prevent a future edit from silently dropping a
-load-bearing gate while allowing the Phase 8 audit topology to evolve.
+load-bearing gate, while leaving the wording of any individual phase free to
+evolve.
+
+Negative assertions matter as much as positive ones here. Manager Mode
+deliberately has *no* post-admission agent review — test quality is judged
+before any leaf spawns (Phase 3.4), and the only downstream checks are
+scripted gates. An edit that reintroduces a post-admission review pass would
+change the skill's core claim, so the absence is pinned explicitly.
 """
 from __future__ import annotations
 
-import re
 import unittest
 from pathlib import Path
 
@@ -17,72 +23,147 @@ REGULAR = (ROOT / "skills/manager-mode/SKILL.md").read_text()
 HARDCORE = (ROOT / "skills/manager-mode-hardcore/SKILL.md").read_text()
 
 
-def batches(leaves: list[str]) -> list[list[str]]:
-    """The documented deterministic batch partition, exercised at boundaries."""
-    return [leaves[i:i + 3] for i in range(0, len(leaves), 3)]
-
-
 class ManagerModeContractTests(unittest.TestCase):
-    def test_base_safety_contract_is_retained(self) -> None:
+    def test_phase_skeleton_is_retained(self) -> None:
         required = (
             "Phase 0 — Preflight", "Phase 1 — Lite-discovery",
             "Phase 2 — Decompose", "Phase 3 — Audit briefs",
             "Phase 4 — Spawn leaves", "Phase 5 — Wait + aggregate sweep",
             "Phase 6 — Admission loop", "Phase 7 — Final report",
-            "check_invariants.py", "≤ 12", "13–16", "> 16",
-            "parent_owned", "Stage outputs", "G1", "G2", "G3", "G4",
-            "G5", "G6", "G7", "bypass", "wave snapshot",
-            "Assumption-sweep", "questions", "proposals", "umbrella",
-            "admit-or-revert", "Apex", "No file overlap across shards",
         )
         for token in required:
             self.assertIn(token, REGULAR, token)
 
-    def test_regular_phase_8_is_batched_evidence_audit(self) -> None:
+    def test_admission_gates_are_retained(self) -> None:
+        """G1-G9 plus the surrounding admission machinery.
+
+        These match each gate's *definition* rather than its bare label —
+        "G8" alone also appears in Phase 3.4's prose, so a bare-token check
+        would still pass after the gate itself was deleted.
+        """
         required = (
-            "Batched evidence audit", "at most three", "ascending `leaf-NN`",
-            "batch-01", "one fresh-context", "Dispatch all batches",
-            "concrete test or probe command", "observed output",
-            "source or\nlocked-spec citation", "Do not edit any file",
-            "ESCALATION-ONLY", "POST-MORTEM.md", "confirmed repairs",
-            "affected leaf tests first", "umbrella/full suite",
-            "accepted/denied/unverified", "changed paths", "final suite status",
+            "G7 wave-sweep check", "G1 parent-owned check",
+            "**G2 ASSUMPTIONS file**", "**G3 open-question**",
+            "**G4 contract-proposal**", "**G5 wave-snapshot integrity**",
+            "**G6 escalation-trigger**", "**G8 test-quality gate**",
+            "**G9 complexity gate**",
+            "check_invariants.py", "test_quality_gate.py", "complexity_gate.py",
+            "parent_owned", "bypass", "wave-snapshot", "Assumption-sweep",
+            "admit-or-revert", "File-match rule", "Apex",
+            "post-review-log.md", "| wave | shard | leaf_id |",
         )
         for token in required:
             self.assertIn(token, REGULAR, token)
-        self.assertNotIn("Runs once per wave, after Phase 7's report, against everything admitted", REGULAR)
-        self.assertIn("writable footprint** — only its admitted leaves' `impl_files` + `test_files`", REGULAR)
-        self.assertIn("read-only audit context", REGULAR)
-        self.assertNotIn("`test_files`, plus the umbrella test", REGULAR)
-        self.assertNotIn("or (if you can run one) an actual command/test output", REGULAR)
 
-    def test_hardcore_keeps_admission_and_adds_two_plus_one_review(self) -> None:
+    def test_leaf_cap_is_a_hard_refusal_at_16(self) -> None:
+        self.assertIn("**> 16:** **refuse**", REGULAR)
+        self.assertIn("non-negotiable", REGULAR)
+        self.assertIn("No file overlap across shards", REGULAR)
+
+    def test_no_agent_grades_its_own_tests(self) -> None:
+        """The authorship separation is the skill's central structural claim.
+
+        Leaves write impl only; a separate shard-test-writer authors the tests;
+        a third fresh-context auditor judges them. Collapsing any two of those
+        roles reintroduces the failure mode the cascade exists to prevent.
+        """
         required = (
-            "Phases 0–7 unchanged", "normal admission loop before any hardcore review batch",
-            "two fresh-context auditors", "Neither auditor may see the other",
-            "third fresh-context reviewer", "CONFIRMED", "DENIED", "UNVERIFIED",
-            "ESCALATION-ONLY", "within the batch's declared implementation/test footprint",
-            "affected leaf tests first", "umbrella/full suite", "REVIEW.md",
-            "POST-MORTEM.md", "G1–G7", "bypass detection", "apex testing",
-            "Shards remain file-disjoint", "wave` and `shard` columns",
-            "AUDIT-FAILURE.md", "missing, malformed, or arrives after",
+            "shard-test-writer", "test_owned_by: parent",
+            "no agent ever grades its own tests",
+            "Do not modify the test files",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_test_quality_audit_runs_before_any_leaf_spawns(self) -> None:
+        required = (
+            "TEST-AUDIT-BRIEF.md", "TEST-AUDIT.md",
+            "before any leaf spawns", "fresh-context",
+            "GOAL FIDELITY", "UMBRELLA ALIGNMENT", "TEST QUALITY",
+            ".swarm/audits/wave-<wave>/<shard-or-default>/",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_no_post_admission_agent_review_exists(self) -> None:
+        """Pinned as an absence — see module docstring."""
+        forbidden = (
+            "Phase 8", "Batched evidence audit", "POST-MORTEM.md",
+            "batch-<NN>", "ESCALATION-ONLY", "adversarial audit",
+        )
+        for token in forbidden:
+            self.assertNotIn(token, REGULAR, token)
+
+    def test_model_tiers_are_pinned_per_role(self) -> None:
+        """Leaves must not silently inherit the overlord's model."""
+        required = (
+            "Opus 5", "Sonnet 5", 'model: "opus"', 'model: "sonnet"',
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_scale_and_boundary_chain_is_wired_end_to_end(self) -> None:
+        """Each link exists in the phase that owns it.
+
+        The chain only works whole: a growth claim stated in the spec but
+        never carried into a brief field, or a boundary sweep with nowhere
+        to escalate to, degrades silently rather than failing loudly.
+        """
+        required = (
+            "## Scale & Boundary Profile",          # 1.A — the source of truth
+            "unbounded-unknown",                    # 1.A — the honest escape hatch
+            "**Hot paths**",                        # 2.2 — decomposition axis
+            "`growth_claim`, `scale_assertions`",   # 2.5 — brief frontmatter
+            "test-design.md",                       # 2.6 — test-writer's rules
+            "BOUNDARIES.md",                        # 2.6 — the swept artifact
+            "BOUNDARY & SCALE FIDELITY",            # 3.4.2 — auditor check
+            "**G10 scale gate**",                   # 6.5 — the gate
+            "scale_gate.py",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_spec_silent_boundaries_escalate_rather_than_guess(self) -> None:
+        self.assertIn(".swarm/questions/", REGULAR)
+        self.assertIn("guessed boundary", REGULAR)
+
+    def test_absolute_timings_belong_to_apex_not_to_leaves(self) -> None:
+        """Leaves run under contention; only apex can hold a wall-clock budget."""
+        self.assertIn("Apex owns absolute numbers", REGULAR)
+
+    def test_spec_link_rule_shape(self) -> None:
+        self.assertIn("# spec: <spec_path>::<section>::AC-<N>", REGULAR)
+        self.assertIn("-- spec: <spec_path>::<section>::AC-<N>", REGULAR)
+
+
+class HardcoreContractTests(unittest.TestCase):
+    def test_hardcore_keeps_the_base_flow_intact(self) -> None:
+        required = (
+            "Phases 0–7 unchanged", "G1–G10", "bypass detection",
+            "apex testing", "Shards remain file-disjoint",
+            "`--strict`", "scale_gate.py",
         )
         for token in required:
             self.assertIn(token, HARDCORE, token)
 
-    def test_batch_boundaries_and_artifact_paths(self) -> None:
-        self.assertEqual(batches(["leaf-01"]), [["leaf-01"]])
-        self.assertEqual(batches(["leaf-01", "leaf-02", "leaf-03"]), [["leaf-01", "leaf-02", "leaf-03"]])
-        self.assertEqual(batches(["leaf-01", "leaf-02", "leaf-03", "leaf-04"]), [["leaf-01", "leaf-02", "leaf-03"], ["leaf-04"]])
-        leaves = [f"leaf-{i:02d}" for i in range(1, 9)]
-        self.assertEqual([len(batch) for batch in batches(leaves)], [3, 3, 2])
-        self.assertRegex(REGULAR, r"\.swarm/audits/wave-<wave>/<shard-or-default>/batch-<NN>/")
-        self.assertRegex(HARDCORE, r"\.swarm/audits/wave-<wave>/<shard-or-default>/batch-<NN>/")
+    def test_hardcore_doubles_the_pre_impl_audit(self) -> None:
+        required = (
+            "two fresh-context auditors", "Neither auditor may see the other",
+            "third fresh-context reviewer", "CONFIRMED", "DENIED", "UNVERIFIED",
+            "test-auditor-1.md", "test-auditor-2.md",
+            "TEST-AUDIT-ADJUDICATION.md", "PRE-IMPL-AUDIT-SUMMARY.md",
+        )
+        for token in required:
+            self.assertIn(token, HARDCORE, token)
 
-    def test_admission_identity_prevents_cross_wave_or_shard_batching(self) -> None:
-        self.assertIn("| wave | shard | leaf_id |", REGULAR)
-        self.assertIn("rows whose `wave` and `shard` columns match", REGULAR)
-        self.assertIn("legacy row without wave/shard identity is not eligible", REGULAR)
+    def test_hardcore_fails_loudly_on_a_missing_auditor(self) -> None:
+        self.assertIn("AUDIT-FAILURE.md", HARDCORE)
+        self.assertIn("missing, malformed, or arrives after", HARDCORE)
+        self.assertIn("do not spawn the adjudicator", HARDCORE)
+
+    def test_hardcore_adds_no_post_admission_review_either(self) -> None:
+        for token in ("Phase 8", "POST-MORTEM.md", "batch-<NN>"):
+            self.assertNotIn(token, HARDCORE, token)
 
 
 if __name__ == "__main__":
