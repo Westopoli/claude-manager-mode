@@ -1,6 +1,6 @@
 ---
 name: manager-mode
-description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → decompose → audit → spawn → wait + sweep → admission loop → final report) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing); a separate shard-test-writer writes per-leaf failing tests; leaves only write impl — no agent ever grades its own tests. A fresh test-auditor per shard reviews goal-fidelity and umbrella-alignment before any leaf spawns — no post-admission adversarial pass exists. Decomposition consolidates file-disjoint slices into one leaf when they're one coherent responsibility, scored by a spec-text rubric (rule-clusters, exception branches, integrations, cross-cutting concerns), not a leaf-per-file default. File-based, no git. Hard-refuses when decomposition exceeds 16 leaves. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
+description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → plan-consistency → decompose → audit → spawn → wait + sweep → admission loop → final report) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing); a separate shard-test-writer writes per-leaf failing tests; leaves only write impl — no agent ever grades its own tests. A blocking plan-consistency pass checks the locked spec/contract/umbrella against each other before decomposition. Leaves build in per-leaf sandboxes, so a leaf's green cannot be produced by a sibling's edits. A fresh test-auditor per shard reviews goal-fidelity and umbrella-alignment before any leaf spawns — no post-admission adversarial pass exists. Decomposition consolidates file-disjoint slices into one leaf when they're one coherent responsibility, scored by a spec-text rubric (rule-clusters, exception branches, integrations, cross-cutting concerns), not a leaf-per-file default. File-based, no git. Hard-refuses when decomposition exceeds 16 leaves. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
 ---
 
 # /manager-mode — single-command parallel-agent cascade
@@ -31,6 +31,8 @@ Three roles, three model tiers — pick by what kind of work the role does, not 
 - **Shard-test-writer** — Opus 5. Writing a correct, non-tautological test from spec+contract text alone (2.6) is the same judgment-quality bar as decomposition: a weak test here is invisible until a leaf has already implemented against it. Pass `model: "opus"` on the spawn call.
 - **Leaf implementers** — Sonnet 5, always, regardless of which `subagent_type` (Phase 4.2) is picked for a leaf. Implementing against an already-locked, already-audited failing test is bounded, mechanical work by design — that boundedness is the whole point of the brief template (see brief-template.md "Why this template"). Pass `model: "sonnet"` explicitly on every Phase 4 delegation call; do not let it inherit whatever the overlord happens to be running on.
 
+- **Test-fixer** — Sonnet 5. Repairing a test against an already-adjudicated audit finding (3.4.3) is bounded work with the answer attached, unlike authoring one from spec text. Pass `model: "sonnet"`.
+
 Test-quality auditors (3.4) and dependency-map/consolidation drafting sub-agents (Delegated drafting passes) are unaffected — pick their model the same way as before (no explicit override; inherits caller/tool default).
 
 ---
@@ -38,17 +40,18 @@ Test-quality auditors (3.4) and dependency-map/consolidation drafting sub-agents
 ## Phases at a glance
 
 ```
-Phase 0  Preflight              — find/bootstrap .claude-swarm.toml; list which of {spec, contract, umbrella} exist
-Phase 1  Lite-discovery         — fire only for missing inputs; one-question drafts, Bible Compliance footer on spec
-Phase 2  Decompose              — dependency map + consolidation pass + emit briefs + shard-test-writer authors per-leaf failing tests (Spec Link Rule + composition assertion + boundary/scale sweep + task-size guardrail)
-Phase 3  Audit briefs           — run check_invariants.py (incl. contradiction check) + codebase-preconditions + external test-quality audit (goal-fidelity + umbrella-alignment + composition + boundary/scale); fix & re-run on FAIL
-Phase 4  Spawn leaves           — N sub-agents in parallel through the client delegation adapter
-Phase 5  Wait + sweep           — wait all green; aggregate assumption-sweep; write .swarm/wave-N.SWEEP.md
-Phase 6  Admission loop         — per leaf: G1–G10 + file-match + umbrella pre/post + admit-or-revert + log
-Phase 7  Final report           — counts + follow-up direction
+Phase 0    Preflight            — find/bootstrap .claude-swarm.toml; list which of {spec, contract, umbrella} exist
+Phase 1    Lite-discovery       — fire only for missing inputs; one-question drafts, Bible Compliance footer on spec
+Phase 1.5  Plan-consistency     — overlord checks the locked spec/contract/umbrella against each other; BLOCKING
+Phase 2    Decompose            — dependency map + consolidation pass + emit briefs + shard-test-writer authors per-leaf failing tests (Spec Link Rule + composition assertion + boundary/scale sweep + task-size guardrail)
+Phase 3    Audit briefs         — run check_invariants.py (incl. contradiction check) + codebase-preconditions + external test-quality audit (goal-fidelity + umbrella-alignment + composition + boundary/scale); fix & re-run on FAIL
+Phase 4    Spawn leaves         — wave-baseline snapshot; one sandbox per leaf; N sub-agents in parallel through the client delegation adapter
+Phase 5    Wait + sweep         — wait all green; harvest sandboxes into staging; aggregate assumption-sweep; write wave-N.SWEEP.md
+Phase 6    Admission loop       — per leaf: G1–G10 + file-match + umbrella pre/post + admit-or-revert + log
+Phase 7    Final report         — counts + follow-up direction
 ```
 
-If all three inputs (spec, contract, umbrella RED) already exist on disk, Phase 1 is skipped entirely. That is the common path for a returning project.
+If all three inputs (spec, contract, umbrella RED) already exist on disk, Phase 1 is skipped entirely. That is the common path for a returning project. **Phase 1.5 still runs** — it is a check on the locked artifacts, not on the drafting of them, and skipping it for returning projects would exempt exactly the specs that have been edited the most times.
 
 ---
 
@@ -61,6 +64,8 @@ If all three inputs (spec, contract, umbrella RED) already exist on disk, Phase 
 - `type_contract_path` — contract file (often `src/<pkg>/types.py`).
 - `umbrella_test_cmd` — command that runs the umbrella (e.g., `pytest tests/umbrella.py`).
 - `parent_owned` — globs leaves cannot touch.
+- `snapshot_ignore` — paths excluded from the Phase 4.0 baseline and skipped when building a leaf sandbox. Defaults cover `.git/`, `.swarm/`, `__pycache__/`, `node_modules/`, `.venv/`, and test-runner scratch (`.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, coverage output).
+- `sandbox_link` — dependency trees a sandbox symlinks rather than copies (Phase 4.1). Defaults cover `node_modules`, `.venv`, `venv`, `vendor`, `target`.
 
 **0.2 Read inputs.** List which of these three exist on disk:
 
@@ -145,6 +150,54 @@ If the user is engaged and answers quickly, all three drafts can land in one con
 
 ---
 
+## Phase 1.5 — Plan-consistency pass
+
+The overlord reads the locked spec, contract, and umbrella test **against each other** and reports what does not line up. Runs inline in this chat — no sub-agent. It is a reading pass over three files, not a research task, and the overlord is the only context holding the conversation that produced them.
+
+**Always runs**, including the returning-project path where all three already existed at Phase 0 and Phase 1 never fired. That path is not the safe case: an artifact edited across many sessions has had more chances to acquire a contradiction than one drafted ten minutes ago.
+
+### 1.5.1 The five checks
+
+Answer each explicitly, in order. A check with no recorded answer counts as not run.
+
+1. **AC ↔ AC.** Do two acceptance criteria require different values or different behavior for the same thing? Includes a criterion an amendment revised without revising the original it contradicts.
+2. **AC ↔ contract.** Does every AC's behavior have a contract symbol to hang on, and does every symbol an AC names actually exist in the locked contract? An AC with nowhere to land produces either a fabricated symbol or a silent drop.
+3. **AC ↔ umbrella.** Does the umbrella test assert anything an AC contradicts? The umbrella is the top-level behavioral claim; a spec that disagrees with it will be discovered by a leaf, at implementation time, as a test that cannot pass.
+4. **Observability.** Does every AC state an outcome something could assert on? An AC with no observable outcome cannot produce anything but a tautological test — the shard-test-writer will write *something*, and that something will pass no matter what the impl does.
+5. **Named-entity resolution.** Every entity an AC names — a path, an env var, a field, an endpoint, an external capability — is either defined in the spec/contract, or tagged `external-unverified` in the finding table.
+
+### 1.5.2 What check 5 is and is not
+
+Check 5 does **not** research feasibility. The overlord is not required to know whether a third-party product can do what an AC assumes, and pretending otherwise would turn a five-minute pass into an open-ended investigation.
+
+What it refuses is *silence*. An AC that assumes an external capability must say so out loud, in front of the user, who usually does know. The worked example: an AC reading "a Dropbox app scoped to `/n8n/_print_queue/` only" is not internally contradictory and passes checks 1–4 clean. Under check 5 it surfaces as `external-unverified: Dropbox path-scoped app`, and the person reading it knows immediately that Dropbox offers App-folder or Full-Dropbox access and nothing in between. That AC reached five leaves and an entire wave of implementation before anyone noticed.
+
+The pass does not have to be right about the world. It has to stop the spec from quietly assuming.
+
+### 1.5.3 Output and gate
+
+Write `.swarm/<cascade-slug>/PLAN-CHECK.md`:
+
+```markdown
+# Plan-consistency — <cascade-slug>
+
+| # | check | finding | artifact + line | resolution |
+|---|-------|---------|-----------------|------------|
+| 1 | AC ↔ AC | AC-4 and AC-12 both set the retry ceiling, to 3 and to 5 | specs/x.md:41, :88 | open |
+| 5 | named-entity | AC-35 assumes a path-scoped Dropbox app | specs/x.md:210 | external-unverified |
+
+## Checks with no finding
+- AC ↔ contract: no gap.
+- AC ↔ umbrella: no gap.
+- Observability: no gap.
+```
+
+Record the clean checks too. A table listing only findings is indistinguishable from a pass that never ran — the same reason 2.2a requires logging its "no gap" answers.
+
+**Blocking.** Any open finding stops Phase 2. Resolve it by amending the spec, contract, or umbrella — which returns to Phase 1's approval gate, since those artifacts are locked — or by the user recording an explicit waiver in the `resolution` column with a reason. `external-unverified` is a waiver the user grants, not one the overlord grants itself.
+
+---
+
 ## Phase 2 — Decompose
 
 Read the locked spec + contract. Produce one leaf brief per slice at `<briefs_dir>/leaf-NN.md`. Per-leaf failing tests are written in 2.6 by a spawned shard-test-writer, never by the overlord directly. Leaves only write impl against pre-written failing tests.
@@ -202,7 +255,7 @@ Do not pick silently. The seam-axis decision belongs to the user. Multiple ACs i
 
 ### 2.5 Emit briefs
 
-For each slice, write `<briefs_dir>/leaf-NN.md` following `$SWARM_SHARED_DIR/references/brief-template.md`. Set `test_owned_by: parent` in every brief frontmatter (the leaf does not author or modify these files — ownership sits on the parent side of the cascade; see 2.6 for who actually writes them).
+For each slice, write `<briefs_dir>/leaf-NN.md` following `$SWARM_SHARED_DIR/references/brief-template.md`. Set `test_owned_by: parent` in every brief frontmatter (the leaf does not author or modify these files — ownership sits on the parent side of the cascade; see 2.6 for who actually writes them). The field is **required** by `check_invariants.py`, with no default — a brief that omits it fails schema rather than quietly parsing as `leaf`.
 
 Key brief rules:
 - `spec_lines`: concrete `int-int` range.
@@ -215,13 +268,13 @@ Key brief rules:
 
 The brief's `## Task` section must instruct the leaf:
 
-> Test files at `<test_files paths>` are already written and failing. Your job: write impl at `<impl_files paths>` that makes them pass. Stage outputs at `.swarm/pending/leaf-NN/` mirroring destination paths from the project root. Do not modify the test files. Do not create any files outside `impl_files`.
+> Test files at `<test_files paths>` are already written and failing. You are working inside your own sandbox at `.swarm/<cascade-slug>/sandbox/leaf-NN/`, which is your working directory. Your job: edit `<impl_files paths>` in place there until those tests pass — confirm RED first, then GREEN. Do not stage, copy, or move anything; the parent harvests your declared files. Do not modify the test files. Do not create any files outside `impl_files`.
 
 ### 2.6 Write per-leaf failing tests
 
 Per-leaf tests are **not** written by the overlord directly, with no exception for small or single-wave runs. Spawn one **shard-test-writer** sub-agent per shard, on Opus 5 (see "Model defaults" above — pass `model: "opus"` on the spawn call), with the locked spec/contract and that shard's brief set only. It writes every `test_files` path in that shard, exercising only each leaf's contract symbols, and never touches impl. See `swarm-shared/references/playbook.md` "Roles" for the role's full boundary. This keeps test authorship independent of whichever agent later resolves an ambiguity in impl — the failure mode where a leaf writes a test that only certifies its own guess.
 
-**Boundary + scale sweep** — give the shard-test-writer `$SWARM_SHARED_DIR/references/test-design.md` and require the boundary table it specifies at `.swarm/audits/wave-<wave>/<shard-or-default>/BOUNDARIES.md` before its tests count as done. Acceptance criteria describe the happy middle, so tests written from them alone certify the happy middle; the sweep is what forces a second pass over the edges, and its cardinality axis is where a leaf's `growth_claim` turns into an actual assertion. Boundaries the spec pins become tests citing the spec line. Boundaries the spec is **silent** on go to the question ledger (`.swarm/questions/`) — the overlord batches every shard's open boundaries into one block for the user rather than letting the test-writer guess, since a guessed boundary is the same silent design decision this phase's authorship split exists to prevent.
+**Boundary + scale sweep** — give the shard-test-writer `$SWARM_SHARED_DIR/references/test-design.md` and require the boundary table it specifies at `.swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/BOUNDARIES.md` before its tests count as done. Acceptance criteria describe the happy middle, so tests written from them alone certify the happy middle; the sweep is what forces a second pass over the edges, and its cardinality axis is where a leaf's `growth_claim` turns into an actual assertion. Boundaries the spec pins become tests citing the spec line. Boundaries the spec is **silent** on go to the question ledger (`.swarm/<cascade-slug>/questions/`) — the overlord batches every shard's open boundaries into one block for the user rather than letting the test-writer guess, since a guessed boundary is the same silent design decision this phase's authorship split exists to prevent.
 
 **Composition rule (mockist)** — if a leaf's `impl_files` has more than one entry, its test must include at least one interaction assertion (e.g. monkeypatch/spy proving the orchestrator actually calls the collaborator), not just output-state checks. State-only tests can't tell an unused, orphaned function from a wired-in one. See `brief-template.md`'s test-writing guidance.
 
@@ -283,7 +336,7 @@ Once a shard's tests exist (2.6) and pass the invariant audit (3.0–3.3), spawn
 
 #### 3.4.1 Overlord compiles the test-audit context package
 
-Before spawning, write `.swarm/audits/wave-<wave>/<shard-or-default>/TEST-AUDIT-BRIEF.md` containing everything the auditor needs and nothing it must infer:
+Before spawning, write `.swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/TEST-AUDIT-BRIEF.md` containing everything the auditor needs and nothing it must infer:
 
 - **Umbrella test.** Full text of `umbrella_test_cmd`'s test file(s) — the auditor needs the top-level behavioral contract to judge whether a shard's tests are a coherent decomposition of it, not just traced to a spec line in isolation.
 - **The shard's own stated goal.** The relevant spec Summary + Acceptance Criteria this shard's briefs cover, quoted, plus the shard's brief set (paths + `spec_lines` + `contract_imports` per brief).
@@ -318,7 +371,12 @@ Check three things, in order:
    catch now, not at admission.
 3. TEST QUALITY — traces to spec_lines, isn't tautological, carries the
    composition assertion from brief-template.md's mockist rule when
-   impl_files has 2+ entries.
+   impl_files has 2+ entries. SEVERITY FLOOR: a field, value or format the
+   spec names explicitly, with zero assertions anywhere in this shard, is
+   at least 🟡. Never file it as a 🟢 note. "The spec pins this and nothing
+   checks it" is a gap, not a confidence observation — a real cascade filed
+   exactly that as green ("job_id's documented format is unchecked") and
+   shipped the defect it described.
 4. BOUNDARY & SCALE FIDELITY — read BOUNDARIES.md against the tests. Is
    every boundary it lists either tested or escalated as a question, with
    none quietly guessed? Where the brief sets scale_assertions, does the
@@ -328,22 +386,62 @@ Check three things, in order:
 
 Every finding needs a quote from the test, the umbrella, or the spec —
 "looks thin" is not a finding. Write your report to
-.swarm/audits/wave-<wave>/<shard-or-default>/TEST-AUDIT.md.
+.swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/TEST-AUDIT.md.
 ```
 
 Dispatch one auditor per shard in parallel (shards already don't share footprint, per Phase 3's non-overlap check).
 
 #### 3.4.3 On findings
 
-Any 🔴/🟡 finding blocks that shard's leaves from Phase 4 spawn. The shard-test-writer (a **new** fresh spawn, not the flagged auditor and not the same context that wrote the original test) revises the offending test, confirms RED again, and 3.4.2 re-runs. For a purely mechanical fix the auditor pointed at a specific line for (e.g. a missing composition assertion), the overlord may apply it directly and record why in `TEST-AUDIT.md`'s follow-up section — do not silently wave through an unresolved 🔴.
+Any 🔴/🟡 finding blocks that shard's leaves from Phase 4 spawn. Fixes are sized, and the size decides who makes them:
+
+- **Trivial** — the auditor quoted a replacement for a specific line, the change adds no new assertion and creates no new test file. The overlord may apply it inline and record it in `TEST-AUDIT.md`'s follow-up section.
+- **Everything else** — spawn a fresh **test-fixer** sub-agent on Sonnet 5 (`model: "sonnet"`), give it the audit finding, the test under repair, and the spec/contract excerpts it needs. It revises the test and confirms RED again. Not the flagged auditor, and not the context that wrote the original test.
+
+Then 3.4.2 re-runs. Never silently wave through an unresolved 🔴.
+
+Two reasons the line sits there. First, authorship: a finding that needs a new assertion is a test-writing decision, and the overlord grading work it authored is the bias this whole phase exists to remove — a real cascade applied all eight of its audit findings inline, including authoring a new test, and the hatch is what let it. Second, cost: the overlord is the one context alive for the whole cascade, and spending it on hand-editing test bodies is the most expensive way possible to do mechanical work.
+
+Note the deliberate asymmetry with 2.6, which puts original test *authoring* on Opus. Writing a test from spec text alone is a judgment call; repairing one against a specific, already-adjudicated finding is bounded work with the answer attached. Different jobs, different tiers.
 
 ---
 
 ## Phase 4 — Spawn leaves
 
-After Phase 3 reports `all PASS`, spawn one sub-agent per brief **in parallel**, every one on Sonnet 5 (`model: "sonnet"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together (not sequentially) and retain every existing footprint, staging, Phase 5 sweep, and Phase 6 admission gate exactly as written.
+After Phase 3 reports `all PASS`: take the wave baseline (4.0), build one sandbox per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 5 (`model: "sonnet"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together, not sequentially.
 
-### 4.1 Per-leaf prompt shape
+### 4.0 Wave-baseline snapshot
+
+**Before any sandbox is built and before any leaf spawns**, compute SHA-256 of **every** file in the repo — no leaf-owned exclusion — and write `.swarm/<cascade-slug>/wave-<wave>.snapshot.json`:
+
+```json
+{
+  "wave": <wave>,
+  "created_at": "<ISO timestamp>",
+  "leaf_owned_paths": ["src/cache.py", "tests/test_cache.py", ...],
+  "hashes": {"<path>": "<sha256>", ...}
+}
+```
+
+Skip only paths matching `snapshot_ignore` in `.claude-swarm.toml` (defaults: `.git/**`, `.swarm/**`, `__pycache__/**`, `node_modules/**`, `.venv/**`, `*.pyc`, plus test-runner scratch — `.pytest_cache/**`, `.mypy_cache/**`, `.ruff_cache/**`, `.coverage`, `htmlcov/**`, `*.egg-info/**`).
+
+The scratch entries are not cosmetic. The leaf runs its own test command inside its sandbox, so a passing test leaves cache directories there that exist nowhere in the baseline — and G5 would read every one of them as a write outside the leaf's footprint. If a project's runner writes somewhere else, add it here; a G5 block on a cache file is a false positive that will otherwise stop the wave.
+
+`leaf_owned_paths` is still recorded — G5 needs to know which differences are *expected* — but those paths are now hashed like everything else. Two things about the timing and the scope are load-bearing, and the previous design got both wrong: a snapshot taken after the leaves have run cannot detect what the leaves did, and a snapshot that excludes leaf-owned paths is blind to precisely the paths a footprint breach touches.
+
+### 4.1 Build one sandbox per leaf
+
+For each leaf, create `.swarm/<cascade-slug>/sandbox/leaf-NN/` as a copy of the project root:
+
+- Skip `snapshot_ignore` paths.
+- **Symlink**, do not copy, each entry in `sandbox_link` (default `node_modules`, `.venv`, `venv`, `vendor`, `target`). These are usually most of a repo by size and are never leaf-owned, so copying them per leaf is pure cost — but dropping them breaks the leaf's own test command, which is the entire point of the sandbox.
+- The leaf's `test_files` are already written (2.6) and are copied in like everything else. The leaf may read them and must not modify them.
+
+The sandbox is the leaf's working directory. Inside it the leaf edits its declared `impl_files` at their normal paths and observes a real RED→GREEN, because the test imports impl at its real path and inside the sandbox that path is the leaf's own file. Nothing it does is visible to a sibling or to the real project.
+
+**Honest limit:** this costs one project copy per leaf. A repo too large to copy N times should run sequential waves rather than a wide parallel one — that is a real trade-off, not a footnote. `sandbox_link` is what keeps the copy small in the common case.
+
+### 4.2 Per-leaf prompt shape
 
 Each delegation call gets a self-contained prompt:
 
@@ -351,14 +449,21 @@ Each delegation call gets a self-contained prompt:
 You are leaf-NN of a TDD cascade. Read your brief at <briefs_dir>/leaf-NN.md
 in full before doing anything.
 
+You are working inside your own sandbox at
+.swarm/<cascade-slug>/sandbox/leaf-NN/ — a private copy of the project, and
+your working directory. Nothing you do there is visible to a sibling leaf or
+to the real project.
+
 Your test file(s) are already written at <test_files paths> and are failing.
-Your job: write impl at <impl_files paths> that makes them pass.
+Your job: edit <impl_files paths> IN PLACE, at their normal paths inside the
+sandbox, until those tests pass. Run the test command yourself: confirm RED
+first, then GREEN.
 
-Stage your output at .swarm/pending/leaf-NN/ mirroring the destination paths
-from the project root (e.g. src/cache.py → .swarm/pending/leaf-NN/src/cache.py).
-
-Do NOT modify test files. Do NOT create files outside impl_files. Do NOT
-edit any file in do_not_edit.
+Do NOT stage, copy, or move anything anywhere — the parent harvests your
+declared files out of the sandbox after you finish. Do NOT modify test files.
+Do NOT create files outside impl_files (creating a file that IS in impl_files
+is normal — a declared impl file often does not exist yet). Do NOT edit any
+file in do_not_edit.
 
 Small implementation choices are yours to make and expected: internal
 variable/helper names, where you draw a private helper function's
@@ -370,7 +475,7 @@ with several related functions) than when it owns a narrow slice — you own
 more internal structure, so you make more of these calls, same as any
 engineer owns the internals of a file they're the sole author of.
 
-Escalate (write a question to .swarm/questions/leaf-NN-Q<n>.md and proceed
+Escalate (write a question to .swarm/<cascade-slug>/questions/leaf-NN-Q<n>.md and proceed
 under best-guess, recording it in leaf-NN.ASSUMPTIONS.md with
 unanswered: true) only for decisions with weight beyond your own file:
 anything that changes a public function signature or contract symbol,
@@ -381,11 +486,11 @@ require touching do_not_edit. If unsure which side a call falls on, ask:
 "would a sibling leaf or the umbrella test observe this from outside my
 file?" — if yes, escalate; if no, it's yours to decide.
 
-When your test(s) go green in isolation, report back: "leaf-NN green" plus
-a summary of what you staged.
+When your test(s) go green, report back: "leaf-NN green" plus a summary of
+what you changed and the paths you changed it at.
 ```
 
-### 4.2 Subagent type selection
+### 4.3 Subagent type selection
 
 This picks the *tool profile* (`subagent_type`), not the model — every impl leaf runs on Sonnet 5 regardless of which type below is chosen (see "Model defaults"). Default to **`general-purpose`** for every impl leaf. `cavecrew-builder`'s toolset is `Read, Edit, Write, Grep, Glob` only — **no `Bash`** — which means it cannot itself run the leaf's test command to confirm RED-then-GREEN; it can only manually trace test-vs-impl by reading, and every leaf that hits this gap has to explicitly flag "I could not execute the tests" rather than give the overlord a real pass/fail signal. That undermines the brief's own Acceptance step ("Confirm RED... Confirm GREEN"), which assumes the leaf itself runs the command. Pick by capability fit, not by habit:
 
@@ -395,9 +500,9 @@ This picks the *tool profile* (`subagent_type`), not the model — every impl le
 
 This is a hint, not a hard rule. The brief's footprint discipline is the actual safety net; the choice of sub-agent type is performance optimization. If a `cavecrew-builder` leaf hard-refuses mid-spawn, or reports it could not execute its own tests, re-spawn that one leaf as `general-purpose` — don't downgrade the whole wave.
 
-### 4.3 Wait for all leaves to report
+### 4.4 Wait for all leaves to report
 
-Do not advance to Phase 5 until every spawned leaf has reported green-in-isolation. A leaf that reports red after multiple attempts → escalate to user (the leaf may need a re-spawn with corrected brief, or the brief itself was wrong).
+Do not advance to Phase 5 until every spawned leaf has reported green. Green now genuinely means green-in-isolation: each leaf measured it inside its own sandbox, where no sibling's edits exist. A leaf that reports red after multiple attempts → escalate to user (the leaf may need a re-spawn with corrected brief, or the brief itself was wrong).
 
 ---
 
@@ -405,20 +510,15 @@ Do not advance to Phase 5 until every spawned leaf has reported green-in-isolati
 
 All leaves reported green. Before any admission:
 
-### 5.1 Wave-snapshot init
+### 5.1 Harvest sandboxes into staging
 
-Compute SHA-256 of every file in the repo that is NOT declared in any wave-N brief's `test_files` + `impl_files`. Write to `.swarm/wave-<wave>.snapshot.json`:
+The wave-baseline snapshot was taken in Phase 4.0, before any leaf ran. This step collects what the leaves produced.
 
-```json
-{
-  "wave": <wave>,
-  "created_at": "<ISO timestamp>",
-  "leaf_owned_paths": ["src/cache.py", "tests/test_cache.py", ...],
-  "hashes": {"<path>": "<sha256>", ...}
-}
-```
+For each leaf, copy every path in its brief's `test_files + impl_files` out of `.swarm/<cascade-slug>/sandbox/leaf-NN/` into `.swarm/<cascade-slug>/pending/leaf-NN/`, mirroring the layout from the project root (`src/cache.py` → `.swarm/<cascade-slug>/pending/leaf-NN/src/cache.py`). For a sharded wave, staging is `.swarm/<cascade-slug>/pending/<shard>/leaf-NN/`.
 
-Skip files matching `.git/**`, `.swarm/**`, `__pycache__/**`, `node_modules/**`, `.venv/**` (plus any `snapshot_ignore` entries in `.claude-swarm.toml`).
+The overlord does this, not the leaf. That is what makes Phase 6.3's file-match rule satisfiable: staging contains exactly `declared` by construction, including the `test_owned_by: parent` test files the leaf may not touch — the leaf is never asked to place a file it is forbidden to modify.
+
+Leave the sandbox in place until the leaf is admitted or reverted; G5 reads it.
 
 ### 5.2 Aggregate assumption-sweep
 
@@ -430,7 +530,7 @@ Read every `<briefs_dir>/leaf-NN.ASSUMPTIONS.md`. Categorize entries:
 4. **Fabricated symbol or path.** References a type/function/file that does not exist in the contract or repo.
 5. **Compounded inference.** A leaf assumption is justified by another assumption rather than by a spec line or contract symbol.
 
-Write `.swarm/wave-<wave>.SWEEP.md`:
+Write `.swarm/<cascade-slug>/wave-<wave>.SWEEP.md`:
 
 ```markdown
 # Wave <wave> assumption-sweep
@@ -454,34 +554,44 @@ If zero entries flag, write the file anyway with a single line: `Assumption-swee
 
 ### 5.3 Open-question + proposal triage
 
-- List `.swarm/questions/leaf-NN-Q*.md`. For each, ensure either an answer at `.swarm/answers/leaf-NN-Q<n>.md` exists OR the leaf's ASSUMPTIONS file tags it `unanswered: true`. If neither, the leaf made a silent decision — escalate to user for an answer before Phase 6.
-- List `.swarm/proposals/leaf-NN.md`. Resolve every `status: pending` proposal (parent applies + marks `accepted`, OR `rejected` / `superseded`). G4 in Phase 6 blocks on `pending`.
+- List `.swarm/<cascade-slug>/questions/leaf-NN-Q*.md`. For each, ensure either an answer at `.swarm/<cascade-slug>/answers/leaf-NN-Q<n>.md` exists OR the leaf's ASSUMPTIONS file tags it `unanswered: true`. If neither, the leaf made a silent decision — escalate to user for an answer before Phase 6.
+- List `.swarm/<cascade-slug>/proposals/leaf-NN.md`. Resolve every `status: pending` proposal (parent applies + marks `accepted`, OR `rejected` / `superseded`). G4 in Phase 6 blocks on `pending`.
 
 ---
 
 ## Phase 6 — Admission loop
 
-For every leaf with staged output at `.swarm/pending/leaf-NN/`, in ascending NN order:
+For every leaf with staged output at `.swarm/<cascade-slug>/pending/leaf-NN/`, in ascending NN order:
 
 ### 6.0 Bypass detection
 
-Read `.swarm/post-review-log.md`. List all `leaf-NN.md` files in `briefs_dir` whose NN predates the current leaf. Any prior leaf_id absent from the log is a bypass — it was never gated. If bypass found:
+Read `.swarm/post-review-log.md`. List all `leaf-NN.md` files in `briefs_dir` whose NN predates the current leaf. For each, require **both**:
 
-> ⚠ BYPASS: `leaf-NN` has a brief but no post-review-log entry. The file-match rule, parent-owned check, and umbrella were never verified for it. Confirm whether to audit now or accept the risk before continuing.
+1. a row in the log, and
+2. a gate-evidence file at `.swarm/<cascade-slug>/audits/wave-<wave>/leaf-NN.GATES.md` (written by 6.5).
 
-Do not silently continue past a detected bypass.
+Either one missing is a bypass:
 
-If `post-review-log.md` exists but lacks the required header (see 6.7), warn — the audit trail may have been tampered with.
+> ⚠ BYPASS: `leaf-NN` has a brief but no post-review-log entry / no GATES.md. The file-match rule, parent-owned check, and umbrella were never verified for it. Confirm whether to audit now or accept the risk before continuing.
+
+Requiring both is the point. A log row records that a leaf was *admitted*; it is not evidence that anything was *checked*. A wave whose leaves were verified in bulk and then logged afterwards produces a complete, clean-looking log and no GATES files at all — which is exactly what a collapsed admission loop looks like from the outside.
+
+Two further tells, both cheap to check and both non-obvious once the log looks tidy:
+
+- **Identical timestamps** across every row in a wave. The loop is per-leaf and sequential; rows minted in one pass share a timestamp to the second.
+- **A surviving `pending/leaf-NN/`** for a leaf logged `clean`. 6.9a deletes staging on admit, so its presence means admission did not run the path that would have removed it.
+
+Do not silently continue past a detected bypass. If `post-review-log.md` exists but lacks the required header (see 6.7), warn — the audit trail may have been tampered with.
 
 ### 6.1 G7 wave-sweep check (first admission of wave only)
 
-If this is the first admission for this wave: require `.swarm/wave-<wave>.SWEEP.md` to exist and to have an mtime newer than every `leaf-NN.ASSUMPTIONS.md` for this wave. If missing → block. If older than any leaf ASSUMPTIONS → block (re-run Phase 5.2).
+If this is the first admission for this wave: require `.swarm/<cascade-slug>/wave-<wave>.SWEEP.md` to exist and to have an mtime newer than every `leaf-NN.ASSUMPTIONS.md` for this wave. If missing → block. If older than any leaf ASSUMPTIONS → block (re-run Phase 5.2).
 
 For subsequent admissions of the same wave, skip this gate (it passed at first admission).
 
 ### 6.2 Verify staging non-empty
 
-`.swarm/pending/leaf-NN/` must exist and contain ≥ 1 file. If empty: reject — the leaf reported green but staged nothing. Re-spawn or escalate.
+`.swarm/<cascade-slug>/pending/leaf-NN/` must exist and contain ≥ 1 file. If empty: reject — the harvest (5.1) found nothing at the leaf's declared paths inside its sandbox, so the leaf reported green without producing the files it claimed. Re-spawn or escalate.
 
 ### 6.3 File-match rule
 
@@ -496,16 +606,55 @@ When `test_owned_by: parent` (default in this skill — tests are written on the
 
 For every staged file path, check it does NOT match any glob in `parent_owned`. Any match → reject. A leaf that needed to touch parent territory made a design decision the cascade forbids; the right fix is a contract proposal (Phase 5.3), not a direct edit.
 
-### 6.5 Gate sweep (G2–G6)
+### 6.5 Gate sweep — one command
 
+```bash
+python "$SWARM_SHARED_DIR/scripts/run_gates.py" --leaf leaf-NN --cascade <cascade-slug>
+```
+
+That runs every gate below, plus the artifact preconditions each one depends on, and writes the evidence file 6.5a describes. Exit 0 = clear to admit, 1 = blocking findings, 2 = paths could not be resolved. `--strict` (hardcore) blocks on the advisory gates and on a missing `BOUNDARIES.md`.
+
+**Why a runner rather than a checklist.** These gates were prose for a long time, and prose has no failure mode: an overlord that ran all of them and one that ran none produced the same clean report and the same log row. A survey of 64 brief-carrying cascades found `BOUNDARIES.md` present 0 times, `TEST-AUDIT.md` 6 times, the wave snapshot 12 times, and 13 of 15 `post-review-log.md` files holding a header and no rows at all. None of that was visible from inside a run.
+
+The runner also treats a **missing input as a failure rather than a silence** — G5 with no snapshot and G7 with no sweep used to read as "nothing to report" instead of "this gate could not run".
+
+It deliberately does **not** admit anything: no backup, no copy to destinations, no umbrella run, no log row. Those mutate the project and stay with the overlord under the user's eye (6.6–6.9). The runner is the read-only verification that runs first, and the one file it writes is its own report.
+
+Read its output verbatim to the user, the same as Phase 3's. What it checks:
+
+
+- **A1–A4 artifact preconditions** — the wave-baseline snapshot (4.0), the assumption-sweep and its mtime against every ASSUMPTIONS (5.2/G7), the shard's `TEST-AUDIT.md` (3.4), and its `BOUNDARIES.md` (2.6). The first three block; `BOUNDARIES.md` is advisory unless `--strict`. Each of these is an input another gate reads, so a missing one is a gate that cannot run — reported as a failure rather than passed over.
+- **6.3 file-match and 6.0 bypass detection** run here too, as part of the same pass.
 - **G2 ASSUMPTIONS file** — note presence/absence. Do not block on absence (means brief was concrete). Do block if brief's prose implies inference happened but no log exists.
 - **G3 open-question** — every published question must have a matching answer OR an ASSUMPTIONS entry tagged `unanswered: true`. If a parent answer disagrees with the leaf's recorded inference → block (the leaf wrote against the wrong assumption).
-- **G4 contract-proposal** — `.swarm/proposals/leaf-NN.md` must not be `status: pending`. If `accepted`, verify the target parent-owned file actually contains the change (grep for an identifying line).
-- **G5 wave-snapshot integrity** — for every path in `.swarm/wave-<wave>.snapshot.json` that is NOT in this leaf's footprint, recompute SHA-256. Any drift → block (some leaf wrote outside its staging dir).
-- **G6 escalation-trigger** — for every `escalation_triggers:` entry with a `detect:` command in this brief, run the command with `$STAGING_DIR=.swarm/pending/leaf-NN/`. If a trigger fires and no `.swarm/escalations/leaf-NN.md` exists → block.
-- **G8 test-quality gate** (leaves with 2+ `impl_files` only) — run `python "$SWARM_SHARED_DIR/scripts/test_quality_gate.py" --leaf leaf-NN`. Reachability findings (a function nothing in the leaf's own impl calls — an orphaned/unwired implementation) block. Mutation findings (a function whose tests still pass after one mechanical mutation) print as advisory, not blocking by default — a single mutant can miss by bad luck rather than prove the test is weak; pass `--strict` (hardcore does) to block on those too.
-- **G9 complexity gate** (all leaves) — run `python "$SWARM_SHARED_DIR/scripts/complexity_gate.py" --leaf leaf-NN`. Flags any function over `--max-cyclomatic` (default 10) decision points or `--max-nesting` (default 3) block levels. Advisory by default — a high score is not proof of a defect the way G8's reachability is — pass `--strict` (hardcore does) to block on findings. Calibration, measured across 72 functions / 1,583 LOC of real cascade output (`experiments/scaling-test/phaseH-ceiling-search/` rungs H1–H3): cyclomatic peaked at exactly 10 and never exceeded it, so 10 sits on the natural ceiling; nesting never reached 3, so that half of the gate is untested rather than calibrated.
-- **G10 scale gate** (all leaves) — run `python "$SWARM_SHARED_DIR/scripts/scale_gate.py" --leaf leaf-NN`. Covers what G9 structurally cannot: G9 scores *cyclomatic* complexity, so `if item in big_list` inside a loop scores 3 and passes clean while running quadratically. Half A flags loop-nested shapes that turn a linear pass quadratic (self-join, membership scan, string concat, re-sort, N+1 IO); Half B, on leaves whose brief sets `scale_assertions: true`, confirms the test compares two input sizes rather than measuring one. Advisory by default, `--strict` (hardcore) blocks — a flagged shape is strong evidence, not proof.
+- **G4 contract-proposal** — `.swarm/<cascade-slug>/proposals/leaf-NN.md` must not be `status: pending`. If `accepted`, verify the target parent-owned file actually contains the change (grep for an identifying line).
+- **G5 footprint integrity** — using `.swarm/<cascade-slug>/wave-<wave>.snapshot.json` (Phase 4.0), recompute SHA-256 for every file in this leaf's sandbox. Every file whose hash differs from the baseline, or that the baseline does not contain at all, must appear in this leaf's `declared` set. Any other difference → block: the leaf wrote outside its footprint. Also recompute the real project tree against the same baseline; a difference there, before 6.7 copies anything, means something wrote to the live tree during the wave.
+
+  The old form of this gate compared only paths *outside* the leaf's footprint, against a snapshot taken *after* every leaf had already finished. It could not detect a footprint breach on either axis, and reported clean through one.
+- **G6 escalation-trigger** — for every `escalation_triggers:` entry with a `detect:` command in this brief, run the command with `$STAGING_DIR=.swarm/<cascade-slug>/pending/leaf-NN/`. If a trigger fires and no `.swarm/<cascade-slug>/escalations/leaf-NN.md` exists → block.
+- **G8 test-quality gate** (leaves with 2+ `impl_files` only) — `test_quality_gate.py`, run for you by the runner. Reachability findings (a function nothing in the leaf's own impl calls — an orphaned/unwired implementation) block. Mutation findings (a function whose tests still pass after one mechanical mutation) print as advisory, not blocking by default — a single mutant can miss by bad luck rather than prove the test is weak; pass `--strict` (hardcore does) to block on those too.
+- **G9 complexity gate** (all leaves) — `complexity_gate.py`, run for you by the runner. Flags any function over `--max-cyclomatic` (default 10) decision points or `--max-nesting` (default 3) block levels. Advisory by default — a high score is not proof of a defect the way G8's reachability is — pass `--strict` (hardcore does) to block on findings. Calibration, measured across 72 functions / 1,583 LOC of real cascade output (`experiments/scaling-test/phaseH-ceiling-search/` rungs H1–H3): cyclomatic peaked at exactly 10 and never exceeded it, so 10 sits on the natural ceiling; nesting never reached 3, so that half of the gate is untested rather than calibrated.
+- **G10 scale gate** (all leaves) — `scale_gate.py`, run for you by the runner. Covers what G9 structurally cannot: G9 scores *cyclomatic* complexity, so `if item in big_list` inside a loop scores 3 and passes clean while running quadratically. Half A flags loop-nested shapes that turn a linear pass quadratic (self-join, membership scan, string concat, re-sort, N+1 IO); Half B, on leaves whose brief sets `scale_assertions: true`, confirms the test compares two input sizes rather than measuring one. Advisory by default, `--strict` (hardcore) blocks — a flagged shape is strong evidence, not proof.
+
+### 6.5a Gate evidence
+
+`run_gates.py` writes `.swarm/<cascade-slug>/audits/wave-<wave>/leaf-NN.GATES.md` itself, as each check returns:
+
+```markdown
+# leaf-NN gate evidence — wave <wave>
+
+| gate | result | evidence | timestamp |
+|------|--------|----------|-----------|
+| file-match (6.3) | PASS | 3 declared, 3 staged, paths identical | <ISO> |
+| G1 parent-owned  | PASS | no staged path matches parent_owned | <ISO> |
+| G5 footprint     | PASS | 3 files differ from baseline, all declared | <ISO> |
+| G8 test-quality  | ADVISORY | 1 mutation finding, non-blocking | <ISO> |
+| ...              |      |          |           |
+```
+
+One file per leaf. This is what 6.0 checks for on the *next* leaf, and it is the only artifact that distinguishes a loop that ran from a log filled in afterwards. Because the runner writes it, a gate that did not execute has no row — the evidence cannot drift from what actually happened, which is exactly what an overlord writing it from memory could not guarantee.
+
+Do not hand-write this file. If you find yourself composing one, the runner did not run.
 
 ### 6.6 Umbrella pre-admission
 
@@ -515,9 +664,9 @@ If the runner emits count-only output, note: per-test regression detection will 
 
 ### 6.7 Copy + post-admission umbrella
 
-For every path in the brief's `test_files + impl_files`: if a file exists at that destination, snapshot it to `.swarm/backups/leaf-NN/<path>` (mirroring the dest layout). If no file exists yet (new file), record the absence — revert will delete instead of restore.
+For every path in the brief's `test_files + impl_files`: if a file exists at that destination, snapshot it to `.swarm/<cascade-slug>/backups/leaf-NN/<path>` (mirroring the dest layout). If no file exists yet (new file), record the absence — revert will delete instead of restore.
 
-Copy every staged file from `.swarm/pending/leaf-NN/` to its destination path. All declared files copied; no partial admissions.
+Copy every staged file from `.swarm/<cascade-slug>/pending/leaf-NN/` to its destination path. All declared files copied; no partial admissions.
 
 Run `umbrella_test_cmd` again. Capture `post_passing_tests` + `post_count`.
 
@@ -540,7 +689,7 @@ If the brief has an `## Acceptance` block with a test command, run it as a secon
 ### 6.9a Admit
 
 - Staged files are already in place (copied in 6.7).
-- Delete `.swarm/pending/leaf-NN/`.
+- Delete `.swarm/<cascade-slug>/pending/leaf-NN/` and `.swarm/<cascade-slug>/sandbox/leaf-NN/`.
 - If `post-review-log.md` does not yet exist, create with this header:
 
 ```
@@ -557,15 +706,17 @@ If the brief has an `## Acceptance` block with a test command, run it as a secon
 | <wave> | <shard-or-default> | leaf-NN | <impl_files>, <test_files> | +N | <ISO timestamp> | clean |
 ```
 
+Use the real time at which this leaf was admitted. Rows sharing one timestamp across a whole wave are a bypass signal (6.0), because the loop that produces them is sequential.
+
 The log is append-only. Never edit, reorder, or delete entries.
 
 - If `graphify_cmd` is set, run it and inspect for unexpected couplings (new import edge between leaf-owned modules that wasn't in the design). Flag for user; do not block.
 
 ### 6.9b Revert
 
-- For every backup under `.swarm/backups/leaf-NN/`: overwrite the destination with backup contents.
+- For every backup under `.swarm/<cascade-slug>/backups/leaf-NN/`: overwrite the destination with backup contents.
 - For every declared file that had no backup (new file): delete from destination.
-- Delete `.swarm/pending/leaf-NN/`.
+- Delete `.swarm/<cascade-slug>/pending/leaf-NN/`. Keep `.swarm/<cascade-slug>/sandbox/leaf-NN/` — a reverted leaf's sandbox is the forensic record of what it actually did.
 - Append to `post-review-log.md`:
 
 ```
@@ -618,9 +769,9 @@ Apex: <PASS | skipped | FAILED>.
 
 - **Write impl code itself.** The overlord writes spec, contract, and the umbrella test; the shard-test-writer writes per-leaf tests. Impl is the leaf's job.
 - **Delegate the DECISION or hide the review.** Spec approval, contract locking, brief emission, and gate enforcement are decisions and always happen in the overlord chat, visible to the user. What the overlord MAY do (see "Delegated drafting passes" below) is spawn a fresh sub-agent to produce a DRAFT of a hard synthesis artifact — a proposed decomposition shape, a proposed spec section, a proposed resolution of an ambiguity — which the overlord must then independently verify against everything it already knows (the spec, the contract, prior wave history, the user's own words in this chat) before adopting any part of it. The draft and the overlord's verification/edits are both rendered to the user; nothing about the reasoning is hidden. This is drafting-labor delegation, not decision delegation. If the overlord ever adopts a drafted artifact without recording its own independent check against it, that IS the banned failure mode — the boundary is the verification step, not the existence of a draft.
-- **Use git.** All state lives in `.swarm/`. Staging dir replaces branches; backup dir replaces revert; post-review-log replaces git log; per-test set-diff replaces commit metadata for regression attribution. The cascade's guarantees are equivalent; the one thing lost is cryptographic commit signing (acceptable in single-project trust models).
+- **Use git.** All state lives in `.swarm/<cascade-slug>/`. Per-leaf sandboxes replace branches; the staging dir carries the harvested result; the backup dir replaces revert; post-review-log replaces git log; per-test set-diff replaces commit metadata for regression attribution. The cascade's guarantees are equivalent; the one thing lost is cryptographic commit signing (acceptable in single-project trust models).
 - **Auto-spawn leaves before Phase 3 passes.** Phase 4 only fires after Phase 3 reports `all PASS`. Pre-audit spawn re-introduces every failure mode the audit prevents.
-- **Make architecture decisions silently.** Phase 1 surfaces Bible Compliance + each draft as an explicit approval gate. Phase 2 surfaces fat-file collisions + leaf-count guardrails. Phase 3 surfaces invariant violations. Phase 5 surfaces aggregated assumption drift. Phase 6 surfaces per-leaf gate failures. Silence at any of these is the failure mode; explicit user choice is the success path.
+- **Make architecture decisions silently.** Phase 1 surfaces Bible Compliance + each draft as an explicit approval gate. Phase 1.5 surfaces contradictions between the locked artifacts, and any external capability the spec assumes. Phase 2 surfaces fat-file collisions + leaf-count guardrails. Phase 3 surfaces invariant violations. Phase 5 surfaces aggregated assumption drift. Phase 6 surfaces per-leaf gate failures. Silence at any of these is the failure mode; explicit user choice is the success path.
 
 ---
 
@@ -645,8 +796,8 @@ Leaves never message each other directly — the cascade is a tree, leaf-to-leaf
 | Pattern | What | Gate |
 |---|---|---|
 | Sibling-ASSUMPTIONS read | Leaf reads (never writes) sibling `.ASSUMPTIONS.md` before logging its own inferences. Catches drift at leaf-time. | Brief boilerplate; no skill enforcement |
-| Question ledger | Leaf publishes `.swarm/questions/leaf-NN-Q<n>.md`; parent answers in `.swarm/answers/`. Leaf proceeds under best-guess, tags ASSUMPTIONS `unanswered: true`. | G3 (Phase 6.5) |
-| Contract proposals | Leaf publishes `.swarm/proposals/leaf-NN.md` instead of editing parent-owned files. Parent applies + marks accepted. | G4 (Phase 6.5) |
+| Question ledger | Leaf publishes `.swarm/<cascade-slug>/questions/leaf-NN-Q<n>.md`; parent answers in `.swarm/<cascade-slug>/answers/`. Leaf proceeds under best-guess, tags ASSUMPTIONS `unanswered: true`. | G3 (Phase 6.5) |
+| Contract proposals | Leaf publishes `.swarm/<cascade-slug>/proposals/leaf-NN.md` instead of editing parent-owned files. Parent applies + marks accepted. | G4 (Phase 6.5) |
 
 Full theory at `$SWARM_SHARED_DIR/references/playbook.md`.
 
@@ -664,10 +815,10 @@ The refusal at >16 is non-negotiable in this skill. If the user wants to push pa
 
 The 16 cap above is a ceiling on *one wave's* leaf count, not on how much work the cascade can do in parallel overall. A large, genuinely-decomposable spec (dozens of independent slices, no shared-file dependencies between groups of them) doesn't have to run those groups one sequential wave at a time — it can run several waves **concurrently**, each in its own isolated staging tree, the same way a large real-world multi-agent rewrite (64 concurrent Claude instances porting a 500K-line codebase, organized as 4 isolated worktrees of 16 agents each rather than one flat pool of 64) actually scaled: the ceiling on parallelism there wasn't the agents' reasoning quality, it was **write-collision on shared state** — agents running conflicting git commands against the same checkout. The fix was architectural isolation (separate worktrees, no cross-shard git operations), not a bigger flat pool.
 
-Manager-mode's equivalent shared state is `.swarm/pending/`, `post-review-log.md`, and the wave snapshot/sweep files — those are exactly what breaks if two waves try to run concurrently against the same paths. A **shard** is an isolated copy of that state:
+Manager-mode's equivalent shared state is `.swarm/<cascade-slug>/pending/`, `post-review-log.md`, and the wave snapshot/sweep files — those are exactly what breaks if two waves try to run concurrently against the same paths. A **shard** is an isolated copy of that state:
 
-- Instead of one `.swarm/pending/leaf-NN/` staging tree, run N parallel staging trees: `.swarm/pending/shard-A/leaf-NN/`, `.swarm/pending/shard-B/leaf-NN/`, and so on — one per concurrent wave.
-- Each shard gets its own wave number, its own `post-review-log.md` entries (still one shared log file is fine since admission is still one-at-a-time per shard; the append-only format already tolerates interleaved waves), and its own `.swarm/wave-<wave>.snapshot.json` / `.SWEEP.md` / `.AUDIT.md`.
+- Instead of one `.swarm/<cascade-slug>/pending/leaf-NN/` staging tree, run N parallel staging trees: `.swarm/<cascade-slug>/pending/shard-A/leaf-NN/`, `.swarm/<cascade-slug>/pending/shard-B/leaf-NN/`, and so on — one per concurrent wave. `test_quality_gate.py` and `scale_gate.py` resolve this shape from the brief's `shard:` field; pass `--cascade <cascade-slug>` so they know which cascade dir to look under.
+- Each shard gets its own wave number, its own `post-review-log.md` entries (still one shared log file is fine since admission is still one-at-a-time per shard; the append-only format already tolerates interleaved waves), and its own `.swarm/<cascade-slug>/wave-<wave>.snapshot.json` / `.SWEEP.md` / `.AUDIT.md`.
 - **No file overlap across shards, ever** — this is the same non-overlap invariant Phase 3 already enforces within one wave's briefs, just extended to hold across every shard running at the same time. Two shards racing to write the same file is exactly the collision this whole pattern exists to prevent; if the dependency map from Phase 2.1 can't guarantee that separation up front, don't shard — run sequential waves instead.
 - Each shard still obeys the normal refuse->16 leaf-count cap on its own. Sharding is how you go past that ceiling *in aggregate* without raising it for any single wave — mirrors 4 isolated groups of 16 rather than one ungoverned pool of 64.
 

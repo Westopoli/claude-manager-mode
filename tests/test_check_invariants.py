@@ -45,6 +45,104 @@ class InvariantFixtureTests(unittest.TestCase):
         self.run_fixture("malformed-spec-link", "missing Spec Link Rule header")
         self.run_fixture("missing-spec-link", "declared test file `tests/missing.py` not found")
 
+    def mutate_fixture(self, name: str, edit) -> subprocess.CompletedProcess[str]:
+        """Copy a fixture, let `edit(project_dir)` change it, then audit."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            shutil.copytree(FIXTURES / name, project)
+            edit(project)
+            return subprocess.run(
+                ["python3", str(CHECKER), "--root", str(project)],
+                text=True, capture_output=True, check=False,
+            )
+
+    def test_test_owned_by_is_required_not_defaulted(self) -> None:
+        """An omitted `test_owned_by` used to parse silently as `leaf`.
+
+        That is the wrong answer for every brief /manager-mode emits, and it is
+        invisible: the audit passes, and the test paths quietly join the
+        non-overlap and parent-owned checks under the wrong owner.
+        """
+        def drop_field(project: Path) -> None:
+            brief = project / ".swarm/briefs/leaf-01.md"
+            kept = [ln for ln in brief.read_text().splitlines(keepends=True)
+                    if not ln.startswith("test_owned_by:")]
+            brief.write_text("".join(kept))
+
+        result = self.mutate_fixture("overlap", drop_field)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("missing required field `test_owned_by`", result.stdout)
+
+    def test_test_owned_by_rejects_an_unknown_value(self) -> None:
+        def bad_value(project: Path) -> None:
+            brief = project / ".swarm/briefs/leaf-01.md"
+            brief.write_text(brief.read_text().replace(
+                "test_owned_by: parent", "test_owned_by: shared"))
+
+        result = self.mutate_fixture("overlap", bad_value)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("test_owned_by `shared` is not one of", result.stdout)
+
+
+class CascadeSlugResolutionTests(unittest.TestCase):
+    """`.swarm/<slug>/` is the documented layout; flat `.swarm/` is the legacy
+    one. The scripts previously hardcoded flat, so a per-cascade run found no
+    briefs and reported the leaf as not-applicable instead of failing."""
+
+    def audit(self, project: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            ["python3", str(CHECKER), "--root", str(project), *extra],
+            text=True, capture_output=True, check=False,
+        )
+
+    def stage(self, tmp: str, slug: str | None) -> Path:
+        project = Path(tmp) / "project"
+        shutil.copytree(FIXTURES / "overlap", project)
+        if slug is not None:
+            # An explicit briefs_dir always wins over the derivation, so a
+            # fixture that pins the flat path has to drop it to exercise this.
+            cfg = project / ".claude-swarm.toml"
+            cfg.write_text("".join(
+                ln for ln in cfg.read_text().splitlines(keepends=True)
+                if not ln.startswith("briefs_dir")))
+            target = project / ".swarm" / slug
+            target.mkdir(parents=True, exist_ok=True)
+            (project / ".swarm/briefs").rename(target / "briefs")
+        return project
+
+    def test_per_cascade_layout_resolves_without_a_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.audit(self.stage(tmp, "my-cascade"))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("already owned", result.stdout)
+
+    def test_flat_layout_still_resolves(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = self.audit(self.stage(tmp, None))
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("already owned", result.stdout)
+
+    def test_ambiguous_cascades_ask_instead_of_guessing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = self.stage(tmp, "cascade-a")
+            second = project / ".swarm/cascade-b/briefs"
+            second.mkdir(parents=True)
+            shutil.copy(project / ".swarm/cascade-a/briefs/leaf-01.md", second)
+
+            result = self.audit(project)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("pass --cascade", result.stderr)
+
+            # The flag must actually select, not merely unblock: cascade-a
+            # holds the overlapping pair, cascade-b holds one brief alone.
+            chose_a = self.audit(project, "--cascade", "cascade-a")
+            self.assertEqual(chose_a.returncode, 1, chose_a.stdout + chose_a.stderr)
+            self.assertIn("already owned", chose_a.stdout)
+
+            chose_b = self.audit(project, "--cascade", "cascade-b")
+            self.assertEqual(chose_b.returncode, 0, chose_b.stdout + chose_b.stderr)
+            self.assertIn("1/1 briefs PASS", chose_b.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

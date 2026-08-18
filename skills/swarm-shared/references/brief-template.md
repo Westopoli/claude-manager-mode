@@ -32,12 +32,15 @@ do_not_edit:
   - <glob or path>
 impl_line_budget: <int>
 test_assertion_budget: <int>
-# Optional: who writes the RED test. Default `leaf` (leaf owns both test
-# and impl). Set to `parent` for projects where parent-agent authors the
-# umbrella + integration tests and the leaf only writes impl. When
-# `parent`, the test_file is NOT subject to the parent-owned glob check
-# and other briefs don't need to include it in their do_not_edit.
-# test_owned_by: parent | leaf
+# REQUIRED — who writes the RED test. `/manager-mode` 2.6 gives test
+# authorship to the shard-test-writer, so every brief the skill emits sets
+# `parent`; `leaf` exists for projects driving these scripts by hand. There
+# is deliberately no default: a brief that simply forgot the line used to
+# parse as `leaf` and silently pull its test files into the non-overlap and
+# parent-owned checks. When `parent`, the test_file is NOT subject to the
+# parent-owned glob check and other briefs don't need it in their
+# do_not_edit.
+test_owned_by: parent
 # Optional: parallelism wave. Default 1. Leaves in different waves run
 # sequentially (e.g. wave-2 follow-up edits a file wave-1 already owned).
 # Cross-wave leaves skip overlap + do_not_edit checks against each other.
@@ -65,7 +68,7 @@ test_assertion_budget: <int>
 #     verify: "grep -qE '\\(1\\.0 - cover\\)' simulation/damage.py"
 # Optional: escalation triggers with `detect:` commands. /manager-mode Phase 6.5 G6
 # runs each detect command at admission time; if any exit 0 (match found) and
-# no `.swarm/escalations/leaf-NN.md` exists, the admission blocks.
+# no `.swarm/<cascade-slug>/escalations/leaf-NN.md` exists, admission blocks.
 # escalation_triggers:
 #   - name: "signature_change"
 #     detect: "! diff <(grep -E '^def ' src/module.py.bak) <(grep -E '^def ' $STAGING_DIR/src/module.py) > /dev/null"
@@ -138,24 +141,38 @@ mechanically as a backstop; this assertion is the first line of defense.
 
 ## Acceptance
 
-Run `<test command>` for this test_file. Confirm RED. Implement in impl_file
-only. Confirm GREEN. Write your final `test_file` and `impl_file` to
-`.swarm/pending/leaf-NN/` mirroring their paths from the project root
-(e.g. `src/cache.py` → `.swarm/pending/leaf-03/src/cache.py`). Stop.
-Do not copy files to their real destinations — `/manager-mode` Phase 6 does that after gating.
+You are working inside your own sandbox — a private copy of the project at
+`.swarm/<cascade-slug>/sandbox/leaf-NN/`, which is your working directory.
+Nothing you do there is visible to a sibling leaf or to the real project.
+
+Run `<test command>` for this test_file. Confirm RED. Edit `impl_file` in
+place, at its normal path inside the sandbox. Confirm GREEN. Stop.
+
+Do not stage, copy, or move anything. `/manager-mode` Phase 5 harvests your
+declared files out of the sandbox, and Phase 6 copies them to their real
+destinations only after every gate passes.
+
+Earlier versions of this template asked the leaf to confirm GREEN *and* write
+only to a staging directory. Those two instructions could not both be
+satisfied: the test imports impl at its real path, so a leaf that never wrote
+there was running its test against the unmodified file and could not reach
+GREEN. The sandbox removes the conflict rather than picking a side — inside
+it, the real path IS yours.
 
 ## Escalation triggers
 
 Stop and report to the parent if:
 - A type the test imports is not in contract_imports.
-- The impl would need to create a new file.
+- The impl would need to create a file not listed in `impl_files`. (Creating a
+  file that IS listed is ordinary — a declared impl file often does not exist
+  yet.)
 - The impl would need to edit a file in do_not_edit.
 - Two sibling assertions seem to require contradictory behavior.
 - Impl approaches impl_line_budget with assertions still failing.
 
 ## Assumption log
 
-If at any point during your run you had to **infer** something the brief did not specify (a default value, an error code, a representation choice, anything), write it to `<briefs_dir>/leaf-NN.ASSUMPTIONS.md` before you commit. Format:
+If at any point during your run you had to **infer** something the brief did not specify (a default value, an error code, a representation choice, anything), write it to `<briefs_dir>/leaf-NN.ASSUMPTIONS.md` before you finish. Format:
 
 ```markdown
 ## Assumptions made during leaf-NN
@@ -182,7 +199,7 @@ You may only **read** sibling ASSUMPTIONS files. You may never edit one. Cross-l
 
 If the brief is ambiguous on a point that materially shapes your impl (an API shape, a default value, a precedence rule), publish a question instead of guessing:
 
-1. Write the question to `.swarm/questions/leaf-NN-Q<n>.md` with this shape:
+1. Write the question to `.swarm/<cascade-slug>/questions/leaf-NN-Q<n>.md` with this shape:
 
    ```markdown
    ---
@@ -206,7 +223,7 @@ If the brief is ambiguous on a point that materially shapes your impl (an API sh
    - **<thing>**: <inferred value> — source: best-guess, question leaf-NN-Q<n>, unanswered: true
    ```
 
-3. The parent may answer mid-run by writing `.swarm/answers/leaf-NN-Q<n>.md`:
+3. The parent may answer mid-run by writing `.swarm/<cascade-slug>/answers/leaf-NN-Q<n>.md`:
 
    ```markdown
    ---
@@ -231,7 +248,7 @@ If the question is not resolved by admission time, `/manager-mode` Phase 6.5 gat
 
 If satisfying your brief requires a change to a parent-owned file (a type contract field, a fixture, a config), do **not** edit it. G1 will reject your admission. Instead:
 
-1. Write `.swarm/proposals/leaf-NN.md`:
+1. Write `.swarm/<cascade-slug>/proposals/leaf-NN.md`:
 
    ```markdown
    ---
@@ -274,7 +291,7 @@ Never copy the parent-owned file into your impl as a workaround. Duplication is 
 | `test_file`, `impl_file` | One singular each (required). Plural `test_files` / `impl_files` may add more. Combined set not in any same-wave sibling brief. Impl paths not in parent-owned globs. Test paths not in parent-owned globs UNLESS `test_owned_by: parent`. |
 | `contract_imports` | All symbols resolve in the locked type contract file. |
 | `do_not_edit` | Includes every same-wave sibling's leaf-owned files; includes parent-owned globs. (Sibling test files only required here when `test_owned_by` is `leaf`.) |
-| `test_owned_by` (optional) | `parent` or `leaf`. Default `leaf`. |
+| `test_owned_by` | **Required.** `parent` or `leaf`; any other value fails schema. No default — an omitted field cannot silently mean the wrong thing. |
 | `wave` (optional) | Integer ≥ 1. Default 1. Cross-wave leaves are sequenced, not parallel. |
 | `shard` (optional) | String id, default none. Inferred from `shard-<id>/` directory if unset. Leaf-owned paths must never overlap another shard's, at any wave — shards run concurrently, so this check applies across the whole run, not just one wave. |
 | `impl_line_budget`, `test_assertion_budget` | Set, ≤ project max from `.claude-swarm.toml`. |

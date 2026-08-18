@@ -82,9 +82,81 @@ printf 'old hardcore\n' > "$backup_case/codex/skills/manager-mode-hardcore/SKILL
 printf 'old shared\n' > "$backup_case/codex/skills/swarm-shared/SKILL.md"
 HOME="$backup_case/home" CLAUDE_CONFIG_DIR="$backup_case/claude" CODEX_HOME="$backup_case/codex" PATH="$backup_case/bin:$BASE_PATH" bash "$INSTALLER" >/dev/null
 assert_exists "$backup_case/codex/skills/manager-mode/SKILL.md"
-assert_exists "$backup_case/codex/skills/manager-mode.bak."*
-assert_exists "$backup_case/codex/skills/manager-mode-hardcore.bak."*
-assert_exists "$backup_case/codex/skills/swarm-shared.bak."*
-assert_exists "$backup_case/codex/skills/swarm.bak."*
+# Backups live NEXT TO skills/, not inside it: a client loads everything it
+# finds in skills/, so an in-place backup becomes a second stale copy of the
+# skill, invocable by name.
+assert_exists "$backup_case/codex/skill-backups/manager-mode.bak."*
+assert_exists "$backup_case/codex/skill-backups/manager-mode-hardcore.bak."*
+assert_exists "$backup_case/codex/skill-backups/swarm-shared.bak."*
+assert_exists "$backup_case/codex/skill-backups/swarm.bak."*
+if compgen -G "$backup_case/codex/skills/*.bak.*" > /dev/null; then
+  fail "no backup may remain inside skills/"
+fi
+
+# A backup an older installer already left inside skills/ gets relocated.
+stray_case="$TEST_ROOT/stray"
+mkdir -p "$stray_case/codex/skills/manager-mode.bak.20200101000000"
+printf 'stale\n' > "$stray_case/codex/skills/manager-mode.bak.20200101000000/SKILL.md"
+HOME="$stray_case/home" CLAUDE_CONFIG_DIR="$stray_case/claude" \
+  CODEX_HOME="$stray_case/codex" PATH="$BASE_PATH" bash "$INSTALLER" >/dev/null
+assert_exists "$stray_case/codex/skill-backups/manager-mode.bak.20200101000000/SKILL.md"
+if compgen -G "$stray_case/codex/skills/*.bak.*" > /dev/null; then
+  fail "a pre-existing in-skills backup should be relocated on install"
+fi
+
+# --- multi-account coverage -------------------------------------------------
+# The drift this closes was real: install.sh only ever knew CLAUDE_CONFIG_DIR,
+# so a machine with several accounts kept stale skills in all but one of them
+# and nothing reported it.
+accounts_case="$TEST_ROOT/accounts"
+mkdir -p "$accounts_case/home/claude-accounts/secondary/.claude" \
+         "$accounts_case/home/claude-accounts/tertiary/.claude" \
+         "$accounts_case/primary"
+HOME="$accounts_case/home" CLAUDE_CONFIG_DIR="$accounts_case/primary" \
+  CODEX_HOME="$accounts_case/nocodex" PATH="$BASE_PATH" bash "$INSTALLER" >/dev/null
+assert_exists "$accounts_case/primary/skills/manager-mode/SKILL.md"
+assert_exists "$accounts_case/home/claude-accounts/secondary/.claude/skills/manager-mode/SKILL.md"
+assert_exists "$accounts_case/home/claude-accounts/tertiary/.claude/skills/manager-mode/SKILL.md"
+assert_missing "$accounts_case/nocodex/skills"
+
+# --no-accounts stays single-target for anyone who wants that.
+solo_case="$TEST_ROOT/solo"
+mkdir -p "$solo_case/home/claude-accounts/secondary/.claude" "$solo_case/primary"
+HOME="$solo_case/home" CLAUDE_CONFIG_DIR="$solo_case/primary" \
+  CODEX_HOME="$solo_case/nocodex" PATH="$BASE_PATH" bash "$INSTALLER" --no-accounts >/dev/null
+assert_exists "$solo_case/primary/skills/manager-mode/SKILL.md"
+assert_missing "$solo_case/home/claude-accounts/secondary/.claude/skills"
+
+# --accounts-root relocates the search.
+altroot_case="$TEST_ROOT/altroot"
+mkdir -p "$altroot_case/elsewhere/acct/.claude" "$altroot_case/primary"
+HOME="$altroot_case/home" CLAUDE_CONFIG_DIR="$altroot_case/primary" \
+  CODEX_HOME="$altroot_case/nocodex" PATH="$BASE_PATH" bash "$INSTALLER" \
+  --accounts-root "$altroot_case/elsewhere" >/dev/null
+assert_exists "$altroot_case/elsewhere/acct/.claude/skills/manager-mode/SKILL.md"
+
+# --- drift detection --------------------------------------------------------
+check_case="$TEST_ROOT/check"
+mkdir -p "$check_case/primary"
+check_env=(HOME="$check_case/home" CLAUDE_CONFIG_DIR="$check_case/primary"
+           CODEX_HOME="$check_case/nocodex" PATH="$BASE_PATH")
+
+# Nothing installed yet: drift, non-zero exit.
+if env "${check_env[@]}" bash "$INSTALLER" --check >/dev/null 2>&1; then
+  fail "--check should exit non-zero before anything is installed"
+fi
+
+env "${check_env[@]}" bash "$INSTALLER" >/dev/null
+assert_exists "$check_case/primary/skills/manager-mode/VERSION"
+check_clean="$(env "${check_env[@]}" bash "$INSTALLER" --check)" \
+  || fail "--check should exit 0 immediately after a successful install"
+assert_contains "$check_clean" "All targets match source"
+
+# A stale VERSION is exactly the Aug-7-vs-Aug-15 case that went unnoticed.
+printf 'deadbee 1999-01-01\n' > "$check_case/primary/skills/manager-mode/VERSION"
+if check_drift="$(env "${check_env[@]}" bash "$INSTALLER" --check 2>&1)"; then
+  fail "--check should exit non-zero when an installed VERSION is stale"
+fi
+assert_contains "$check_drift" "DRIFT"
 
 echo "install.sh tests: PASS"

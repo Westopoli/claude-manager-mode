@@ -330,7 +330,7 @@ def check_mutation(
 def run(
     briefs_dir: Path, root: Path, leaf_id: str, staging_dir: Path | None,
     test_cmd: str | None, max_mutants: int, pythonpath: str | None,
-    strict: bool = False,
+    strict: bool = False, cascade: str | None = None,
 ) -> Report:
     brief = find_brief(briefs_dir, leaf_id)
     if brief is None:
@@ -342,7 +342,10 @@ def run(
     if len(impl_paths) < 2:
         return Report(leaf_id, applicable=False, strict=strict)  # nothing to be unreachable from
 
-    sdir = staging_dir or (root / ".swarm" / "pending" / leaf_id)
+    sdir = ci.resolve_staging_dir(
+        root, leaf_id, shard=ci._shard(brief), slug=cascade,
+        explicit=staging_dir,
+    )
     if not sdir.exists():
         print(f"staging dir not found: {sdir}", file=sys.stderr)
         return Report(leaf_id, applicable=False, strict=strict)
@@ -384,7 +387,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--leaf", required=True, help="leaf_id, e.g. leaf-03")
     p.add_argument("--briefs-dir", type=Path, help="default from .claude-swarm.toml")
     p.add_argument("--root", type=Path, default=Path.cwd())
-    p.add_argument("--staging-dir", type=Path, help="default <root>/.swarm/pending/<leaf>")
+    p.add_argument("--staging-dir", type=Path,
+        help="default: <root>/.swarm/<cascade>/pending/[<shard>/]<leaf>, "
+             "falling back to the flat <root>/.swarm/pending/<leaf>")
+    p.add_argument("--cascade",
+        help="cascade slug for `.swarm/<slug>/...` layouts; auto-detected when "
+             "exactly one exists")
     p.add_argument("--test-cmd", help="default: python3 -m pytest <test_files>")
     p.add_argument("--pythonpath", help="relative dir (from staged leaf root) to add to PYTHONPATH for mutant runs")
     p.add_argument("--max-mutants", type=int, default=8)
@@ -396,7 +404,7 @@ def main(argv: list[str] | None = None) -> int:
 
     root = ci.git_root(args.root)
     cfg = ci.load_config(root)
-    briefs_dir = args.briefs_dir or (root / cfg["briefs_dir"])
+    briefs_dir = ci.resolve_briefs_dir(root, cfg, args.briefs_dir, args.cascade)
     if not briefs_dir.exists():
         print(f"briefs_dir not found: {briefs_dir}", file=sys.stderr)
         return 2
@@ -404,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
     rpt = run(
         briefs_dir, root, args.leaf, args.staging_dir, args.test_cmd,
         args.max_mutants, args.pythonpath, args.strict,
+        ci.discover_cascade_slug(root, args.cascade),
     )
     print(render(rpt))
     return 0 if rpt.passed() else 1

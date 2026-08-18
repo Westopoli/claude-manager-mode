@@ -68,19 +68,20 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
 ### With Manager Mode
 
 ```
-   /manager-mode  ──►  Phase 0  preflight (config + check which inputs exist)
-                Phase 1  lite-discovery (drafts spec/contract/umbrella only if missing,
-                          with Bible Compliance footer on the spec)
-                Phase 2  decompose: emit briefs + write per-leaf failing tests
-                          (Spec Link Rule headers, task-size guardrail >12/>16)
-                Phase 3  audit briefs (check_invariants.py — block on FAIL)
-                Phase 4  spawn N sub-agents in parallel
-                Phase 5  wait green; aggregate assumption-sweep → wave-N.SWEEP.md
-                Phase 6  admission loop: G1–G7 + umbrella pre/post per leaf
-                          (admit or revert from file backup)
-                Phase 7  final report: counts + follow-ups + apex test
-                Phase 8  batched evidence audit: ≤3 admitted leaves per batch;
-                          auditor evidence → overlord confirmation → verified repair
+   /manager-mode  ──►  Phase 0    preflight (config + check which inputs exist)
+                Phase 1    lite-discovery (drafts spec/contract/umbrella only if
+                            missing, with Bible Compliance footer on the spec)
+                Phase 1.5  plan-consistency: spec vs contract vs umbrella —
+                            blocking, and runs even when nothing was drafted
+                Phase 2    decompose: emit briefs + shard-test-writer authors
+                            per-leaf failing tests (Spec Link Rule, ≤16 leaves)
+                Phase 3    audit briefs (check_invariants.py + external
+                            test-quality audit — block on FAIL)
+                Phase 4    wave baseline; one sandbox per leaf; spawn N in parallel
+                Phase 5    wait green; harvest sandboxes; assumption-sweep
+                Phase 6    admission loop: G1–G10 + umbrella pre/post per leaf
+                            (admit or revert from file backup)
+                Phase 7    final report: counts + follow-ups + apex test
 ```
 
 ## Benchmarks
@@ -117,6 +118,7 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 | Component | What |
 |---|---|
 | `/manager-mode` | The single command. Drives all eight phases — preflight, lite-discovery, decompose, audit, spawn, sweep, admission loop, report. |
+| `run_gates.py` | Runs every Phase 6.5 gate for one leaf in a single command — artifact preconditions, file-match, G1–G6, G8–G10 — and writes the leaf's `GATES.md` evidence file itself. Read-only: it verifies, it never admits. Exists because prose gates have no failure mode; across 64 surveyed cascades the boundary sweep was recorded 0 times and 13 of 15 admission logs held a header and no rows. |
 | `check_invariants.py` | Deterministic audit script run at Phase 3. Standalone — runnable in CI without Claude Code. Checks file-overlap, no-design, sizing, and the Spec Link Rule (every test file headers `# spec: <path>::<section>::AC-<N>`). |
 | `playbook.md` | Full theory: why each invariant exists, what failure mode it prevents, prep-step seam discipline, file-mediated coordination patterns. |
 | `brief-template.md` | Canonical leaf-brief shape. `/manager-mode` Phase 2 emits briefs against this template; Phase 3 audits against it. |
@@ -127,11 +129,11 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 
 1. **Preflight (Phase 0).** Find or bootstrap `.claude-swarm.toml`. List which of {spec, contract, umbrella} already exist on disk.
 2. **Lite-discovery (Phase 1).** Fires only for missing inputs. One-question drafts per artifact — spec, type contract, failing umbrella test. The spec carries a Bible Compliance footer (cites your source-of-truth doc + lists deliberate divergences). No `.UNSTATED.md` ceremony.
-3. **Decompose (Phase 2).** Reads spec + contract, emits one brief per sub-agent at `<briefs_dir>/leaf-NN.md`, AND writes a failing test for each brief (overlord-owned tests; leaves only write impl). Refuses to emit more than 16 leaves in one wave; warns past 12. Every test file begins with a `# spec: <path>::<section>::AC-<N>` header (Spec Link Rule).
+3. **Decompose (Phase 2).** Reads spec + contract, emits one brief per sub-agent at `<briefs_dir>/leaf-NN.md`. A separate shard-test-writer — never the overlord — authors the failing test for each brief; leaves only write impl. Refuses to emit more than 16 leaves in one wave. Every test file begins with a `# spec: <path>::<section>::AC-<N>` header (Spec Link Rule).
 4. **Audit (Phase 3).** Runs `check_invariants.py`. Any FAIL → fix the brief and re-run. No spawn until PASS.
-5. **Spawn (Phase 4).** One sub-agent per brief, in parallel — Claude Code uses native `Task` delegation and Codex uses `spawn_agent`. Each sub-agent's prompt says: "tests at X are failing; write impl at Y to make them pass; do not modify tests; stage at `.swarm/pending/leaf-NN/`."
-6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green. Then run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `.swarm/wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
-7. **Admission loop (Phase 6).** Per leaf: G1–G7 gates → file-match → umbrella pre/post → admit-or-revert. Backup-based revert (no git). Append-only `post-review-log.md` for audit trail.
+5. **Spawn (Phase 4).** Hash every file as the wave baseline, then give each leaf its own sandbox — a private copy of the project — and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`). Each leaf edits its impl files in place inside its sandbox and confirms RED→GREEN for real. Because the real tree is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
+6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green, then harvest each leaf's declared files out of its sandbox into staging. Run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
+7. **Admission loop (Phase 6).** Per leaf: G1–G10 gates → file-match → umbrella pre/post → admit-or-revert. G5 compares the leaf's sandbox against the wave baseline, so any write outside its declared footprint blocks. Backup-based revert (no git). Append-only `post-review-log.md` plus a per-leaf `GATES.md` — the log records an admission, the evidence file records that the gates actually ran.
 8. **Report + evidence audit (Phases 7–8).** Counts of admitted/reverted/escalated and apex status, followed by parallel evidence audits in deterministic ≤3-leaf batches. The overlord records accepted/denied findings and verifies any confirmed in-footprint repair with affected tests and the configured full suite.
 
 ## Coordination model
@@ -141,10 +143,10 @@ The cascade is a tree: parent at root, leaves at fringe, no edges between leaves
 | Pattern | What | Where it fires |
 |---|---|---|
 | **Sibling-ASSUMPTIONS read** | Leaves read (never write) other leaves' `.ASSUMPTIONS.md` before logging their own. Catches drift at leaf-time instead of admission-time. | Leaf brief boilerplate |
-| **Question ledger** | Leaf publishes `.swarm/questions/leaf-NN-Q<n>.md` instead of inferring silently. Parent answers asynchronously in `.swarm/answers/`. | `/manager-mode` Phase 6.5 **G3** gate enforces resolution |
-| **Contract proposals** | Leaf publishes `.swarm/proposals/leaf-NN.md` instead of editing parent-owned files. Parent applies + accepts. | `/manager-mode` Phase 6.5 **G4** gate verifies application |
+| **Question ledger** | Leaf publishes `.swarm/<cascade>/questions/leaf-NN-Q<n>.md` instead of inferring silently. Parent answers asynchronously in `.swarm/<cascade>/answers/`. | `/manager-mode` Phase 6.5 **G3** gate enforces resolution |
+| **Contract proposals** | Leaf publishes `.swarm/<cascade>/proposals/leaf-NN.md` instead of editing parent-owned files. Parent applies + accepts. | `/manager-mode` Phase 6.5 **G4** gate verifies application |
 
-What's intentionally **not** built: direct leaf-to-leaf messaging, shared mutable state, synchronous waits, cross-leaf impl reads from `.swarm/pending/`. Each would re-introduce a failure mode the cascade exists to prevent.
+What's intentionally **not** built: direct leaf-to-leaf messaging, shared mutable state, synchronous waits, cross-leaf impl reads from another leaf's sandbox or staging dir. Each would re-introduce a failure mode the cascade exists to prevent.
 
 ## Gate reference
 
@@ -172,7 +174,7 @@ Every safety net is a numbered gate. Each runs at a specific point in the workfl
 
 ## Install
 
-One command detects Claude Code and Codex and installs the versioned `manager-mode`, `manager-mode-hardcore`, and `swarm-shared` skills into every detected client.
+One command detects Claude Code and Codex and installs the versioned `manager-mode`, `manager-mode-hardcore`, and `swarm-shared` skills into every detected client — machine-wide, including every Claude Code account under `~/claude-accounts/*/.claude`, not just whichever one `CLAUDE_CONFIG_DIR` currently points at.
 
 **macOS / Linux**
 ```bash
@@ -183,6 +185,17 @@ curl -fsSL https://raw.githubusercontent.com/Westopoli/claude-manager-mode/main/
 ```powershell
 irm https://raw.githubusercontent.com/Westopoli/claude-manager-mode/main/install.ps1 | iex
 ```
+
+### Checking what is installed
+
+```bash
+./install.sh --list     # every target, with the version each one holds
+./install.sh --check    # same, but exits 1 if any target drifts from source
+```
+
+Each installed skill directory carries a `VERSION` stamp (source commit + install date). Without it, a stale install is undetectable from inside a session: the skill loads and reads as authoritative while quietly running rules that were changed or removed from source, possibly months earlier.
+
+Flags: `--no-accounts` restricts to the primary config dir, `--accounts-root DIR` looks for accounts somewhere other than `~/claude-accounts`, `--only claude|codex` restricts by client.
 
 ### Manual install
 

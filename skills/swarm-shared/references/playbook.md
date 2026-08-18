@@ -48,7 +48,9 @@ The graphify (or fallback dependency map) must confirm non-overlap **before** as
 
 ### 2. No design decisions at the leaf
 
-A leaf agent translates spec assertions into code. It does not choose API shapes, invent type names, pick libraries, decide naming, or resolve ambiguity. If the test references a type, that type must already exist in the locked shared contract. If anything is unclear, the leaf stops and escalates.
+A leaf agent translates spec assertions into code. It does not choose API shapes, invent type names, pick libraries, or resolve an ambiguity that reaches outside its own file. If the test references a type, that type must already exist in the locked shared contract.
+
+"Design decision" here means *externally observable*: anything a sibling leaf or the umbrella test could see. Choices with no observer outside the leaf's own impl files — helper names, internal structure, control-flow shape — are authorship and stay with the leaf (see "Leaf" under Roles). An unclear point with external weight goes to the question ledger under a logged best-guess; it does not stall the leaf.
 
 In a brief, design-decision risk shows up as:
 - Verbs like *decide*, *choose*, *design*, *determine*, *figure out*, *resolve*.
@@ -83,7 +85,9 @@ Runs on Opus 5, same tier as the parent — judging whether a test correctly enc
 
 ### Leaf
 
-Runs on Sonnet 5, always — implementing against an already-locked, already-audited failing test is bounded mechanical work by design, not a judgment call, so it doesn't need the heavier tier. Receives one assignment: one test file, one impl file, the spec line range it must satisfy, the DO-NOT-EDIT list, and the contract imports it may use. Runs test → confirms RED → writes minimum impl → confirms GREEN → commits → stops. Never creates files. Never edits anything outside its assignment. Never makes design decisions. On ambiguity, stops and reports — does not guess.
+Runs on Sonnet 5, always — implementing against an already-locked, already-audited failing test is bounded mechanical work by design, not a judgment call, so it doesn't need the heavier tier. Receives one assignment: one test file, one impl file, the spec line range it must satisfy, the DO-NOT-EDIT list, and the contract imports it may use. Works inside its own sandbox (below): runs test → confirms RED → writes minimum impl → confirms GREEN → stops. Creates its declared `impl_files` when they don't exist yet, and nothing else. Never edits anything outside its assignment.
+
+**Owns internals, escalates externals.** A leaf makes small implementation choices freely — helper names, where a private function boundary falls inside its own file, control-flow shape. What it may not decide alone is anything a sibling leaf or the umbrella test could observe from outside its file: a public signature, a contract symbol, an unpinned business rule. Those go to the question ledger, where it proceeds under a logged best-guess rather than blocking (see "Synchronous waits" below — a leaf that stalls waiting for the parent stalls the wave). This is the same boundary `/manager-mode` Phase 4.1 states to the leaf directly; the older "never makes design decisions, stops and reports, does not guess" phrasing overstated it in both directions at once.
 
 ---
 
@@ -93,7 +97,7 @@ Runs on Sonnet 5, always — implementing against an already-locked, already-aud
 
 Leaf agents follow the assumption-log convention: if a leaf had to infer anything during its run, it writes `<briefs_dir>/leaf-NN.ASSUMPTIONS.md`. The brief boilerplate (`brief-template.md`) gives leaves the format.
 
-After all leaves report green (`/manager-mode` Phase 5), the parent runs the **aggregate assumption-sweep**. The sweep reads every leaf log, classifies entries against the spec, the bible (source-of-truth doc), and the type contract, and surfaces drift with a damage assessment and a patch suggestion. The user makes the call on patch vs. redo. Default bias: patch — redo costs an afternoon, a patch usually costs minutes. The sweep output is written to `.swarm/wave-<wave>.SWEEP.md` and is required (G7) before any admission of the wave begins.
+After all leaves report green (`/manager-mode` Phase 5), the parent runs the **aggregate assumption-sweep**. The sweep reads every leaf log, classifies entries against the spec, the bible (source-of-truth doc), and the type contract, and surfaces drift with a damage assessment and a patch suggestion. The user makes the call on patch vs. redo. Default bias: patch — redo costs an afternoon, a patch usually costs minutes. The sweep output is written to `.swarm/<cascade-slug>/wave-<wave>.SWEEP.md` and is required (G7) before any admission of the wave begins.
 
 The reason this is a written convention rather than a free-form check: an LLM auditing its own inferences in the same turn rarely catches them. A separate sweep, against persisted logs, with explicit categories (contradicts-spec / contradicts-strategy-doc / cross-leaf / fabricated / compounded), forces structured re-examination.
 
@@ -148,17 +152,17 @@ Failure mode prevented: two leaves silently inferring incompatible shapes of the
 
 ### 2. Question ledger
 
-Leaves publish questions to `.swarm/questions/leaf-NN-Q<n>.md` instead of inferring silently. The parent answers asynchronously at `.swarm/answers/leaf-NN-Q<n>.md`. The leaf proceeds under a best-guess inference if no answer arrives; the inference is recorded with an explicit `unanswered: true` tag.
+Leaves publish questions to `.swarm/<cascade-slug>/questions/leaf-NN-Q<n>.md` instead of inferring silently. The parent answers asynchronously at `.swarm/<cascade-slug>/answers/leaf-NN-Q<n>.md`. The leaf proceeds under a best-guess inference if no answer arrives; the inference is recorded with an explicit `unanswered: true` tag.
 
 `/manager-mode` Phase 6.5 gate **G3** enforces resolution before admission: every published question must either have an answer or be acknowledged as unanswered in ASSUMPTIONS.
 
 This is forensic, not synchronous. Leaves do not block on questions — they record them and continue under best-guess. The gate converts "silent inference" into "logged inference with explicit parent acknowledgement." If the parent's answer contradicts the leaf's guess, G3 surfaces the contradiction by name.
 
-Failure mode prevented: a leaf needs to know X, brief is ambiguous, leaf infers and writes code. Today the inference might appear in ASSUMPTIONS but is indistinguishable from any other inference. With the question ledger, the existence of `.swarm/questions/leaf-NN-Q<n>.md` proves the leaf flagged the uncertainty rather than absorbing it silently — and the parent's answer (if present) is the canonical decision.
+Failure mode prevented: a leaf needs to know X, brief is ambiguous, leaf infers and writes code. Today the inference might appear in ASSUMPTIONS but is indistinguishable from any other inference. With the question ledger, the existence of `.swarm/<cascade-slug>/questions/leaf-NN-Q<n>.md` proves the leaf flagged the uncertainty rather than absorbing it silently — and the parent's answer (if present) is the canonical decision.
 
 ### 3. Contract proposals
 
-When a leaf needs a parent-owned file changed to satisfy its brief, it writes `.swarm/proposals/leaf-NN.md` instead of editing the file (which G1 would reject) or duplicating the file (which silent drift would absorb). The proposal contains the proposed diff and the reason it is required.
+When a leaf needs a parent-owned file changed to satisfy its brief, it writes `.swarm/<cascade-slug>/proposals/leaf-NN.md` instead of editing the file (which G1 would reject) or duplicating the file (which silent drift would absorb). The proposal contains the proposed diff and the reason it is required.
 
 The parent reviews and sets `status: accepted | rejected | superseded`. Accepted proposals require the parent to first apply the diff to the target file; `/manager-mode` Phase 6.5 gate **G4** verifies the change is actually present, not just marked accepted.
 
@@ -169,17 +173,21 @@ Failure mode prevented: leaf needs a type contract extended. Today the leaf eith
 - **Direct leaf-to-leaf messaging.** Would make the cascade a graph; would destroy regression attribution; would create deadlock and ordering bugs. Not added under any pretext.
 - **Shared mutable state owned by N leaves.** Would break file-ownership invariant (the first invariant). Not added.
 - **Synchronous waits.** A leaf cannot block on parent action; it proceeds under best-guess and the gate checks consistency at admission time. Async by design.
-- **Cross-leaf reads of pending impl code.** Leaves may read sibling ASSUMPTIONS (immutable once published, structurally separate from impl) but never sibling impl in `.swarm/pending/`. Coupling admission order to file resolution would create dependency hell.
+- **Cross-leaf reads of pending impl code.** Leaves may read sibling ASSUMPTIONS (immutable once published, structurally separate from impl) but never sibling impl, in a sibling's sandbox or in `.swarm/<cascade-slug>/pending/`. Coupling admission order to file resolution would create dependency hell.
 
 All three additions are strictly additive: each is a gate that, if turned off, reverts to the pre-coordination behavior. They do not change the cascade shape, the three invariants, or the parent-only-arbitrates rule.
 
 ---
 
-## Staging is the only canonical mode
+## The sandbox is what makes isolation real
 
-Leaves write to `.swarm/pending/leaf-NN/`. The skill copies from staging to real at admission time and only if every gate passes. There is no override that lets a leaf "write to real to save a step" — across session compacts, parallel agents, and audit trails, the staging dir is the only thing that preserves provenance. A workflow that lets leaves write directly to real for any reason re-introduces three failure modes simultaneously: ownership ambiguity (which leaf authored this hunk?), audit-log gaps (post-review-log claims clean while HEAD says otherwise), and bypass of every G1–G6 gate (none of them run on direct writes).
+Each leaf works in its own copy of the project at `.swarm/<cascade-slug>/sandbox/leaf-NN/` (Phase 4.1). It edits its declared impl files there, at their normal paths, and confirms RED→GREEN against them. It stages nothing by hand: Phase 5 harvests the declared paths out of the sandbox into `.swarm/<cascade-slug>/pending/leaf-NN/`, and Phase 6 copies those to real destinations only after every gate passes.
 
-`/manager-mode` Phase 6.5 gate **G5** (wave-snapshot integrity) is the post-hoc detection for this: if a leaf writes directly to real, the hash of that file at admission time will not match the wave-start snapshot, and G5 blocks the admission of any leaf in the wave. Detection, not prevention — but the gate forces the violation to surface before it propagates.
+The real project is untouched for the entire duration of the wave. That is what makes "green in isolation" a true statement rather than a hopeful one — a leaf's green cannot be produced by a sibling's edits, because a sibling's edits are not in its sandbox.
+
+This replaces an earlier design in which the leaf edited nothing and wrote only to a staging directory. That version could not work, and the reason is worth keeping: the leaf's test imports impl at its **real** path, so a leaf writing only to staging ran its test against the unmodified file and could never observe GREEN. In practice leaves resolved the contradiction by editing the live tree and copying the result into staging afterwards — the reverse of the intended order — which cost exactly the isolation the staging rule existed to create. The instruction was prose, and prose is not a gate.
+
+`/manager-mode` Phase 6.5 gate **G5** is what enforces the footprint now. Phase 4.0 hashes **every** file before any leaf spawns; G5 then requires that every file differing from that baseline inside a leaf's sandbox appears in the leaf's declared footprint. Anything else blocks. The earlier snapshot could not do this on either axis: it excluded leaf-owned paths by construction — precisely the paths a breach touches — and it was taken in Phase 5, after every leaf had already finished.
 
 ---
 

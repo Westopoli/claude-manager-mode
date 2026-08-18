@@ -106,13 +106,103 @@ def git_root(start: Path) -> Path:
 def load_config(root: Path) -> dict[str, Any]:
     cfg_path = root / ".claude-swarm.toml"
     if not cfg_path.exists():
-        return DEFAULTS
+        cfg = {**DEFAULTS, "invariants": {**DEFAULTS["invariants"]}}
+        cfg["_user_keys"] = frozenset()
+        return cfg
     with cfg_path.open("rb") as fh:
         user_cfg = tomllib.load(fh)
     merged = {**DEFAULTS, **user_cfg}
     inv = {**DEFAULTS["invariants"], **user_cfg.get("invariants", {})}
     merged["invariants"] = inv
+    # An explicitly-set key always wins over a derived default. Without this
+    # the cascade-slug resolver below cannot tell `briefs_dir` the user chose
+    # from `briefs_dir` that merely fell through from DEFAULTS.
+    merged["_user_keys"] = frozenset(user_cfg)
     return merged
+
+
+# ---------- cascade-slug path resolution ----------
+#
+# /manager-mode scopes each cascade's working files under `.swarm/<slug>/`
+# (config.md "Cascade-slug derivation"). Projects predating that layout keep a
+# flat `.swarm/briefs/` + `.swarm/pending/`. Both shapes resolve here so
+# neither the skill nor an existing repo has to migrate: per-cascade first,
+# flat as fallback. Before this existed the docs described one layout and
+# these scripts hardcoded another, so a per-cascade run silently found no
+# briefs and skipped the leaf instead of failing.
+
+_SLUG_STRIP_RE = re.compile(r"[^a-z0-9-]")
+
+
+def normalize_slug(name: str) -> str:
+    """Lowercase, whitespace/underscore runs to one hyphen, strip the rest."""
+    collapsed = re.sub(r"[\s_]+", "-", str(name).strip().lower())
+    return _SLUG_STRIP_RE.sub("", collapsed).strip("-")
+
+
+def cascade_candidates(root: Path) -> list[str]:
+    """Every `.swarm/<slug>/briefs/` directory present, by slug."""
+    swarm = root / ".swarm"
+    if not swarm.is_dir():
+        return []
+    return sorted({p.parent.name for p in swarm.glob("*/briefs") if p.is_dir()})
+
+
+def discover_cascade_slug(root: Path, explicit: str | None = None) -> str | None:
+    """Explicit --cascade wins. Otherwise auto-resolve only when exactly one
+    cascade dir exists; ambiguity returns None so the caller can ask rather
+    than guess which cascade the user meant."""
+    if explicit:
+        # A slug that names a directory on disk wins as-is. Normalization maps
+        # `_` to `-`, but real cascades predate that rule and use underscores;
+        # rewriting their name silently resolves to a path that isn't there.
+        if (root / ".swarm" / explicit).is_dir():
+            return explicit
+        return normalize_slug(explicit)
+    found = cascade_candidates(root)
+    return found[0] if len(found) == 1 else None
+
+
+def resolve_briefs_dir(root: Path, cfg: dict[str, Any],
+                       explicit: Path | None = None,
+                       cascade: str | None = None) -> Path:
+    if explicit:
+        return explicit
+    if "briefs_dir" in cfg.get("_user_keys", frozenset()):
+        return root / cfg["briefs_dir"]
+    slug = discover_cascade_slug(root, cascade)
+    if slug:
+        candidate = root / ".swarm" / slug / "briefs"
+        if candidate.is_dir():
+            return candidate
+    return root / cfg["briefs_dir"]
+
+
+def staging_candidates(root: Path, leaf_id: str, shard: str = "",
+                       slug: str | None = None) -> list[Path]:
+    """Staging dirs to try, most specific first. The shard-scoped shapes are
+    what SKILL.md's "Shard-based parallelism" section prescribes; they were
+    previously resolved by no script at all."""
+    swarm = root / ".swarm"
+    bases = ([swarm / slug / "pending"] if slug else []) + [swarm / "pending"]
+    out: list[Path] = []
+    for base in bases:
+        if shard:
+            out.append(base / shard / leaf_id)
+        out.append(base / leaf_id)
+    return out
+
+
+def resolve_staging_dir(root: Path, leaf_id: str, shard: str = "",
+                        slug: str | None = None,
+                        explicit: Path | None = None) -> Path:
+    if explicit:
+        return explicit
+    candidates = staging_candidates(root, leaf_id, shard, slug)
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return candidates[0]
 
 
 FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n(.*)$", re.DOTALL)
@@ -179,7 +269,14 @@ REQUIRED_FIELDS = (
     "test_file", "impl_file",
     "contract_imports", "do_not_edit",
     "impl_line_budget", "test_assertion_budget",
+    # Required, not defaulted. /manager-mode 2.6 gives test authorship to the
+    # shard-test-writer, so every brief it emits is `parent`; a silent default
+    # meant a brief that simply forgot the line still parsed as something. An
+    # omitted field cannot mean the wrong thing if it cannot be omitted.
+    "test_owned_by",
 )
+
+TEST_OWNED_BY_VALUES = ("parent", "leaf")
 
 
 def check_schema(briefs: list[Brief]) -> list[Failure]:
@@ -203,6 +300,11 @@ def check_schema(briefs: list[Brief]) -> list[Failure]:
             if field_name not in b.frontmatter:
                 fails.append(Failure(b.leaf_id, "schema",
                     f"missing required field `{field_name}`"))
+        owned_by = b.frontmatter.get("test_owned_by")
+        if owned_by is not None and str(owned_by).lower() not in TEST_OWNED_BY_VALUES:
+            fails.append(Failure(b.leaf_id, "schema",
+                f"test_owned_by `{owned_by}` is not one of "
+                f"{'/'.join(TEST_OWNED_BY_VALUES)}"))
         if b.leaf_id in seen_ids:
             fails.append(Failure(b.leaf_id, "schema",
                 f"duplicate leaf_id `{b.leaf_id}` across briefs"))
@@ -256,9 +358,13 @@ def _shard(b: Brief) -> str:
 
 
 def _test_owned_by_leaf(b: Brief) -> bool:
-    """Default: leaf owns its tests. Set test_owned_by: parent in the brief
-    when the parent agent authors umbrella + integration tests and the leaf
-    only writes impl."""
+    """True when the leaf itself owns its test files.
+
+    `test_owned_by` is a REQUIRED field (see REQUIRED_FIELDS), so for any
+    schema-valid brief this reads a value that is actually present. The
+    fallback below is only reached by a brief that already failed schema, and
+    it deliberately falls to the stricter side (`leaf` keeps the test paths
+    inside the non-overlap and parent-owned checks)."""
     return str(b.frontmatter.get("test_owned_by", "leaf")).lower() == "leaf"
 
 
@@ -620,13 +726,20 @@ def main(argv: list[str] | None = None) -> int:
         help="path to briefs dir; default from .claude-swarm.toml")
     p.add_argument("--root", type=Path, default=Path.cwd(),
         help="project root (defaults to cwd; walks up looking for .claude-swarm.toml)")
+    p.add_argument("--cascade",
+        help="cascade slug for `.swarm/<slug>/...` layouts; auto-detected when "
+             "exactly one exists")
     args = p.parse_args(argv)
 
     root = git_root(args.root)
     cfg = load_config(root)
-    briefs_dir = args.briefs_dir or (root / cfg["briefs_dir"])
+    briefs_dir = resolve_briefs_dir(root, cfg, args.briefs_dir, args.cascade)
     if not briefs_dir.exists():
         print(f"briefs_dir not found: {briefs_dir}", file=sys.stderr)
+        found = cascade_candidates(root)
+        if len(found) > 1 and not args.cascade:
+            print(f"multiple cascades present ({', '.join(found)}); "
+                  f"pass --cascade <slug>", file=sys.stderr)
         return 2
     rpt = audit(briefs_dir, cfg, root)
     print(render(rpt))

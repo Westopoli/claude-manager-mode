@@ -35,7 +35,7 @@ class ManagerModeContractTests(unittest.TestCase):
             self.assertIn(token, REGULAR, token)
 
     def test_admission_gates_are_retained(self) -> None:
-        """G1-G9 plus the surrounding admission machinery.
+        """G1-G10 plus the surrounding admission machinery.
 
         These match each gate's *definition* rather than its bare label —
         "G8" alone also appears in Phase 3.4's prose, so a bare-token check
@@ -44,11 +44,11 @@ class ManagerModeContractTests(unittest.TestCase):
         required = (
             "G7 wave-sweep check", "G1 parent-owned check",
             "**G2 ASSUMPTIONS file**", "**G3 open-question**",
-            "**G4 contract-proposal**", "**G5 wave-snapshot integrity**",
+            "**G4 contract-proposal**", "**G5 footprint integrity**",
             "**G6 escalation-trigger**", "**G8 test-quality gate**",
-            "**G9 complexity gate**",
+            "**G9 complexity gate**", "**G10 scale gate**",
             "check_invariants.py", "test_quality_gate.py", "complexity_gate.py",
-            "parent_owned", "bypass", "wave-snapshot", "Assumption-sweep",
+            "parent_owned", "bypass", "wave-baseline", "Assumption-sweep",
             "admit-or-revert", "File-match rule", "Apex",
             "post-review-log.md", "| wave | shard | leaf_id |",
         )
@@ -80,10 +80,85 @@ class ManagerModeContractTests(unittest.TestCase):
             "TEST-AUDIT-BRIEF.md", "TEST-AUDIT.md",
             "before any leaf spawns", "fresh-context",
             "GOAL FIDELITY", "UMBRELLA ALIGNMENT", "TEST QUALITY",
-            ".swarm/audits/wave-<wave>/<shard-or-default>/",
+            ".swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/",
         )
         for token in required:
             self.assertIn(token, REGULAR, token)
+
+    def test_plan_consistency_pass_gates_decomposition(self) -> None:
+        """Phase 1.5 is a gate, not a suggestion.
+
+        Its two failure modes are being skipped on the returning-project path
+        (where Phase 1 never fires) and degrading to advisory. Both are pinned.
+        """
+        required = (
+            "Phase 1.5 — Plan-consistency pass",
+            "PLAN-CHECK.md",
+            "external-unverified",
+            "**Blocking.** Any open finding stops Phase 2",
+            "**Always runs**",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_leaves_build_in_sandboxes_not_the_live_tree(self) -> None:
+        """The isolation property, and the gate that enforces it.
+
+        A leaf's test imports impl at its real path, so "confirm GREEN" and
+        "write only to staging" cannot both hold. The sandbox is what resolves
+        that; the Phase 4.0 baseline is what lets G5 detect a leaf that
+        escaped it. Losing either silently restores the contradiction.
+        """
+        required = (
+            "### 4.0 Wave-baseline snapshot",
+            "### 4.1 Build one sandbox per leaf",
+            ".swarm/<cascade-slug>/sandbox/leaf-NN/",
+            "sandbox_link",
+            "### 5.1 Harvest sandboxes into staging",
+            "no leaf-owned exclusion",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_gate_evidence_backs_the_bypass_check(self) -> None:
+        """A log row records an admission; it is not proof a gate ran."""
+        required = (
+            "### 6.5a Gate evidence",
+            "leaf-NN.GATES.md",
+            "Identical timestamps",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+
+    def test_phase_6_gates_run_from_a_script_not_a_checklist(self) -> None:
+        """Prose gates have no failure mode.
+
+        An overlord that ran all of them and one that ran none produced the
+        same clean report — which is how 64 cascades accumulated 0 boundary
+        sweeps and 13 empty post-review-logs. The runner, and its refusal to
+        treat a missing input as silence, are both load-bearing.
+        """
+        required = (
+            "run_gates.py",
+            "missing input as a failure rather than a silence",
+            "Do not hand-write this file",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+        # The runner verifies; it must never admit.
+        self.assertIn("does **not** admit anything", REGULAR)
+
+    def test_overlord_never_authors_test_content(self) -> None:
+        """The authorship split, including its one sized exception.
+
+        The overlord may apply a fix the auditor quoted verbatim; anything
+        larger goes to a fresh test-fixer. An unbounded "mechanical fix"
+        hatch is how a real cascade ended up authoring a whole new test.
+        """
+        required = ("test-fixer", "adds no new assertion")
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+        self.assertNotIn("play the role yourself inline", REGULAR)
 
     def test_no_post_admission_agent_review_exists(self) -> None:
         """Pinned as an absence — see module docstring."""
@@ -124,7 +199,7 @@ class ManagerModeContractTests(unittest.TestCase):
             self.assertIn(token, REGULAR, token)
 
     def test_spec_silent_boundaries_escalate_rather_than_guess(self) -> None:
-        self.assertIn(".swarm/questions/", REGULAR)
+        self.assertIn(".swarm/<cascade-slug>/questions/", REGULAR)
         self.assertIn("guessed boundary", REGULAR)
 
     def test_absolute_timings_belong_to_apex_not_to_leaves(self) -> None:
