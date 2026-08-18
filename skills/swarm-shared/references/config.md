@@ -59,6 +59,13 @@ parent_owned = [
 max_impl_lines        = 200
 max_test_assertions   = 20
 
+# Leaves one shard-test-writer may own. A shard is a partition of a wave, and
+# one shard is one writer holding that shard's whole brief set plus every impl
+# file its tests target. The wave's own 16-leaf cap is sized for a different
+# load and is far too loose here. Phase 3 fails any (wave, shard) group past
+# this; split into ceil(leaves / max_leaves_per_shard) shards.
+max_leaves_per_shard  = 6
+
 # Words that, if found in a brief's task prose, indicate a design decision
 # is being delegated to the leaf. /manager-mode Phase 3 fails the brief.
 ambiguous_verbs = [

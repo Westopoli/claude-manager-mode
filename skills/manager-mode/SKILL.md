@@ -272,6 +272,8 @@ The brief's `## Task` section must instruct the leaf:
 
 ### 2.6 Write per-leaf failing tests
 
+**How many shard-test-writers.** One per shard, and a shard holds **5-6 leaves at most** — see "Shards" below for why that number and not the wave's own 16. A wave of 6 or fewer leaves is **one shard**, writing to `audits/wave-<wave>/default/`. Do not create a shard per leaf: shard count multiplies through every downstream per-shard phase — test-writer, test-auditor, `TEST-AUDIT-BRIEF.md`, the A3/A4 artifacts — so a 5-leaf wave split four ways buys four spawn-and-audit cycles for tests one writer could hold, and loses the cross-leaf contradictions only a shared context can see.
+
 Per-leaf tests are **not** written by the overlord directly, with no exception for small or single-wave runs. Spawn one **shard-test-writer** sub-agent per shard, on Opus 5 (see "Model defaults" above — pass `model: "opus"` on the spawn call), with the locked spec/contract and that shard's brief set only. It writes every `test_files` path in that shard, exercising only each leaf's contract symbols, and never touches impl. See `swarm-shared/references/playbook.md` "Roles" for the role's full boundary. This keeps test authorship independent of whichever agent later resolves an ambiguity in impl — the failure mode where a leaf writes a test that only certifies its own guess.
 
 **Boundary + scale sweep** — give the shard-test-writer `$SWARM_SHARED_DIR/references/test-design.md` and require the boundary table it specifies at `.swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/BOUNDARIES.md` before its tests count as done. Acceptance criteria describe the happy middle, so tests written from them alone certify the happy middle; the sweep is what forces a second pass over the edges, and its cardinality axis is where a leaf's `growth_claim` turns into an actual assertion. Boundaries the spec pins become tests citing the spec line. Boundaries the spec is **silent** on go to the question ledger (`.swarm/<cascade-slug>/questions/`) — the overlord batches every shard's open boundaries into one block for the user rather than letting the test-writer guess, since a guessed boundary is the same silent design decision this phase's authorship split exists to prevent.
@@ -310,6 +312,7 @@ The script reads `.claude-swarm.toml`, parses every `leaf-*.md` in `briefs_dir`,
 - **no-design** — `spec_lines` concrete; `contract_imports` resolve in the locked contract; no ambiguous verbs in task prose.
 - **no-contradiction** — no rule/value cited with two different literal values across sibling briefs in the same wave/shard (heuristic, not exhaustive — catches a rule stated two ways before any leaf has to guess which one is real).
 - **sizing** — `impl_line_budget` ≤ `max_impl_lines`; `test_assertion_budget` ≤ `max_test_assertions`.
+- **shard-sizing** — no `(wave, shard)` group holds more than `max_leaves_per_shard` (default 6) leaves. One shard is one shard-test-writer; see "Shards". An unsharded wave is one group, so a 7-leaf wave fails here until it is split.
 - **spec-link** — every brief-declared test file path starts with `# spec: ...::AC-N` header (or `-- spec: ...::AC-N` for SQL).
 
 Exit 0 = all pass, exit 1 = findings, exit 2 = config error.
@@ -805,21 +808,38 @@ Full theory at `$SWARM_SHARED_DIR/references/playbook.md`.
 
 ## Task-size discipline
 
-Phase 2.3 refuses past 16 leaves — drift between siblings, context fill, missed cross-leaf contradictions. Phase 2.2's consolidation pass is what should keep most waves well under this; a wave still near 16 after honest consolidation judgment likely needs re-scoping, not a bigger cap.
+Phase 2.3 refuses past 16 leaves — drift between siblings, context fill, missed cross-leaf contradictions. That cap bounds a **wave**; the separate 5-6 cap in "Shards" below bounds a **shard**, and the two are not the same number for the reasons set out there. Phase 2.2's consolidation pass is what should keep most waves well under this; a wave still near 16 after honest consolidation judgment likely needs re-scoping, not a bigger cap.
 
 Past 16 even after consolidation: split into sequential waves (`wave:` field sequences cross-wave file edits).
 
 The refusal at >16 is non-negotiable in this skill. If the user wants to push past it, that decision belongs upstream — re-scope the spec, not the gate.
 
-## Shard-based parallelism, for specs that outgrow one wave
+## Shards
 
-The 16 cap above is a ceiling on *one wave's* leaf count, not on how much work the cascade can do in parallel overall. A large, genuinely-decomposable spec (dozens of independent slices, no shared-file dependencies between groups of them) doesn't have to run those groups one sequential wave at a time — it can run several waves **concurrently**, each in its own isolated staging tree, the same way a large real-world multi-agent rewrite (64 concurrent Claude instances porting a 500K-line codebase, organized as 4 isolated worktrees of 16 agents each rather than one flat pool of 64) actually scaled: the ceiling on parallelism there wasn't the agents' reasoning quality, it was **write-collision on shared state** — agents running conflicting git commands against the same checkout. The fix was architectural isolation (separate worktrees, no cross-shard git operations), not a bigger flat pool.
+A **shard** is a partition of one wave: an isolated staging tree plus its own shard-test-writer, its own test-auditor, and its own audit dir. It is *not* a separate wave — shards inside a wave share the wave number, the wave snapshot, and the sweep. Every gate script already resolves a shard from the brief's `shard:` field independently of `wave:`, so nothing needs a distinct wave number per shard.
 
-Manager-mode's equivalent shared state is `.swarm/<cascade-slug>/pending/`, `post-review-log.md`, and the wave snapshot/sweep files — those are exactly what breaks if two waves try to run concurrently against the same paths. A **shard** is an isolated copy of that state:
+### Sizing — 5-6 leaves per shard
 
-- Instead of one `.swarm/<cascade-slug>/pending/leaf-NN/` staging tree, run N parallel staging trees: `.swarm/<cascade-slug>/pending/shard-A/leaf-NN/`, `.swarm/<cascade-slug>/pending/shard-B/leaf-NN/`, and so on — one per concurrent wave. `test_quality_gate.py` and `scale_gate.py` resolve this shape from the brief's `shard:` field; pass `--cascade <cascade-slug>` so they know which cascade dir to look under.
-- Each shard gets its own wave number, its own `post-review-log.md` entries (still one shared log file is fine since admission is still one-at-a-time per shard; the append-only format already tolerates interleaved waves), and its own `.swarm/<cascade-slug>/wave-<wave>.snapshot.json` / `.SWEEP.md` / `.AUDIT.md`.
-- **No file overlap across shards, ever** — this is the same non-overlap invariant Phase 3 already enforces within one wave's briefs, just extended to hold across every shard running at the same time. Two shards racing to write the same file is exactly the collision this whole pattern exists to prevent; if the dependency map from Phase 2.1 can't guarantee that separation up front, don't shard — run sequential waves instead.
-- Each shard still obeys the normal refuse->16 leaf-count cap on its own. Sharding is how you go past that ceiling *in aggregate* without raising it for any single wave — mirrors 4 isolated groups of 16 rather than one ungoverned pool of 64.
+Two limits are in play and they are **not** the same number:
 
-This is additive, not a replacement for the default path. Most specs fit in one wave and don't need this section at all — reach for shards only when the dependency map already shows multiple large, file-disjoint groups of slices, and running them sequentially would just be waiting with no coordination benefit.
+- The **16-leaf cap** (Phase 2.3) bounds one wave. It is sized for staging isolation and for the overlord's brief-writing load — roughly 120 lines of brief per leaf.
+- The **5-6 leaf shard cap** bounds one shard-test-writer. That agent holds the shard's entire brief set *and* every impl file its tests target, then emits working test code plus one boundary table covering all of them.
+
+Measured on a real cascade: ~376 lines of test code, ~17 assertions and ~28 `BOUNDARIES.md` rows per leaf, against target impl files ranging from 10 to 3,975 lines. At 16 leaves that is ~6,000 lines of test code, ~320 assertions and a ~450-row boundary table, emitted from one context that has already read ~19,000 lines in. The three failure modes the 16 cap cites — drift between siblings, context fill, missed cross-leaf contradictions — bite the writer *harder* than they bite a leaf: each leaf holds only its own brief, while the writer holds every one of them and has to produce working code against each.
+
+So: **`shards = ceil(leaves / 6)`**. A wave of 6 or fewer is one shard and writes to `default/`.
+
+Two overrides sit on top of the arithmetic:
+
+- **Volume.** A leaf whose target impl exceeds ~2,000 lines counts as more than one against the shard budget. A single 4,000-line target can earn its own shard even in a small wave — reading it is most of that writer's context.
+- **Co-location.** Leaves whose ACs cite each other's symbols, units, or constants go in the **same** shard. This is the inverse of Phase 3's non-overlap rule: non-overlap keeps *files* apart, co-location keeps *semantics* together, because a contradiction between two ACs is only findable inside one context. In the cascade the numbers above come from, a counter specified in three incompatible units was caught by the one shard that happened to hold two leaves, and by nothing else in the run.
+
+**No file overlap across shards, ever** — the same non-overlap invariant Phase 3 enforces within a wave, extended to every shard running at the same time. Two shards racing to write one file is the collision this whole partition exists to prevent. If the Phase 2.1 dependency map can't guarantee that separation, don't shard the wave — sequence it instead.
+
+### Going past one wave
+
+The 16 cap bounds one wave's leaf count, not the cascade's total parallelism. A large, genuinely-decomposable spec (dozens of independent slices, no shared-file dependencies between groups of them) can run several waves **concurrently**, each in its own isolated staging tree — the way a real multi-agent rewrite (64 concurrent Claude instances porting a 500K-line codebase, organized as 4 isolated worktrees of 16 agents each rather than one flat pool of 64) actually scaled. The ceiling there wasn't the agents' reasoning quality, it was **write-collision on shared state** — agents running conflicting git commands against the same checkout. The fix was architectural isolation, not a bigger flat pool.
+
+Manager-mode's equivalent shared state is `.swarm/<cascade-slug>/pending/`, `post-review-log.md`, and the wave snapshot/sweep files. Concurrent waves each take their own wave number and their own `.swarm/<cascade-slug>/wave-<N>.snapshot.json` / `.SWEEP.md` / `.AUDIT.md`; `post-review-log.md` stays a single append-only file, disambiguated by its `wave` and `shard` columns, since admission is still one leaf at a time. Each concurrent wave obeys the 16 cap on its own, and is itself partitioned into shards by the 5-6 rule above — so a 4-wave run is up to 64 leaves in ~12 shards, mirroring 4 isolated groups rather than one ungoverned pool.
+
+Most specs fit in one wave and never need this subsection. Reach for concurrent waves only when the dependency map already shows multiple large, file-disjoint groups of slices and running them sequentially would just be waiting with no coordination benefit.

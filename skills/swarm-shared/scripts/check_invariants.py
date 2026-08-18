@@ -53,6 +53,7 @@ DEFAULTS: dict[str, Any] = {
         "max_impl_lines": 1000,
         "max_test_assertions": 20,
         "max_brief_code_lines": 10,
+        "max_leaves_per_shard": 6,
         "ambiguous_verbs": [
             "decide", "choose", "design", "determine",
             "figure out", "resolve", "as appropriate",
@@ -78,7 +79,7 @@ class Brief:
 @dataclass
 class Failure:
     leaf_id: str
-    invariant: str  # "non-overlap" | "no-design" | "sizing" | "schema"
+    invariant: str  # "non-overlap" | "no-design" | "sizing" | "shard-sizing" | "schema"
     reason: str
 
 
@@ -181,8 +182,8 @@ def resolve_briefs_dir(root: Path, cfg: dict[str, Any],
 def staging_candidates(root: Path, leaf_id: str, shard: str = "",
                        slug: str | None = None) -> list[Path]:
     """Staging dirs to try, most specific first. The shard-scoped shapes are
-    what SKILL.md's "Shard-based parallelism" section prescribes; they were
-    previously resolved by no script at all."""
+    what SKILL.md's "Shards" section prescribes; they were previously
+    resolved by no script at all."""
     swarm = root / ".swarm"
     bases = ([swarm / slug / "pending"] if slug else []) + [swarm / "pending"]
     out: list[Path] = []
@@ -657,14 +658,47 @@ def check_sizing(briefs: list[Brief], invariants: dict[str, Any]) -> list[Failur
     return fails
 
 
+def check_shard_sizing(briefs: list[Brief],
+                       invariants: dict[str, Any]) -> list[Failure]:
+    """One shard is one shard-test-writer, and that agent holds the whole
+    shard's brief set plus every impl file its tests target before it emits a
+    line of test code. The wave's own 16-leaf cap is sized for a different
+    load (staging isolation + the overlord's brief writing) and is far too
+    loose here — see SKILL.md "Shards". A wave past the cap must be split
+    into `ceil(leaves / max_leaves_per_shard)` shards; a wave at or under it
+    needs no shard at all.
+    """
+    cap = int(invariants["max_leaves_per_shard"])
+    groups: dict[tuple[int, str], list[Brief]] = {}
+    for b in briefs:
+        groups.setdefault((_wave(b), _shard(b)), []).append(b)
+
+    fails: list[Failure] = []
+    for (wave, shard), members in sorted(groups.items()):
+        if len(members) <= cap:
+            continue
+        label = f"wave-{wave}/{shard or 'default'}"
+        ids = ", ".join(sorted(b.leaf_id for b in members))
+        needed = -(-len(members) // cap)  # ceil
+        fails.append(Failure(label, "shard-sizing",
+            f"{len(members)} leaves in one shard ({ids}) exceeds "
+            f"max_leaves_per_shard={cap} — one shard is one shard-test-writer, "
+            f"and that context cannot hold {len(members)} leaves' briefs, "
+            f"target impl and test output at once. Split into {needed} shards "
+            f"(set `shard:` per brief, or move them under "
+            f"`<briefs_dir>/shard-<id>/`), keeping leaves whose ACs cite each "
+            f"other's symbols or units in the SAME shard"))
+    return fails
+
+
 # ---------- driver ----------
 
 def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
     rpt = Report()
     # Flat `leaf-*.md` (the single-wave default) plus `shard-*/leaf-*.md`
-    # (concurrent shards — see "Shard-based parallelism" in SKILL.md). A
-    # project with no shards has zero matches for the second glob, so this
-    # is a no-op for every existing single-wave setup.
+    # (see "Shards" in SKILL.md). A project with no shards has zero
+    # matches for the second glob, so this is a no-op for every existing
+    # single-wave setup.
     #
     # `path.stem` on a real brief ("leaf-03.md") has no dot ("leaf-03"). The
     # brief template's own convention for sidecar files — leaf-03.ASSUMPTIONS.md,
@@ -692,6 +726,7 @@ def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
         int(cfg["invariants"]["max_brief_code_lines"]),
     ))
     rpt.failures.extend(check_sizing(rpt.briefs, cfg["invariants"]))
+    rpt.failures.extend(check_shard_sizing(rpt.briefs, cfg["invariants"]))
     rpt.failures.extend(check_spec_link(rpt.briefs, root))
     rpt.failures.extend(check_no_contradiction(rpt.briefs, root))
     return rpt
