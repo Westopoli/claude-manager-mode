@@ -352,10 +352,13 @@ def _shard(b: Brief) -> str:
     explicit = b.frontmatter.get("shard")
     if isinstance(explicit, str) and explicit:
         return explicit
-    for parent in b.path.parents:
-        if parent.name.startswith("shard-"):
-            return parent.name
-    return ""
+    # Only the brief's OWN directory, never an arbitrary ancestor. Walking
+    # every parent meant a project checked out under any path containing a
+    # `shard-*` component inherited a phantom shard on every brief, which
+    # pushes staging resolution at `pending/<shard>/leaf-NN/` — a directory
+    # that does not exist — ahead of the real one.
+    parent = b.path.parent.name
+    return parent if parent.startswith("shard-") else ""
 
 
 def _test_owned_by_leaf(b: Brief) -> bool:

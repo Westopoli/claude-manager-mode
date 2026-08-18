@@ -41,6 +41,45 @@ class InvariantFixtureTests(unittest.TestCase):
     def test_sizing_limit(self) -> None:
         self.run_fixture("sizing", "exceeds project max")
 
+    def test_shard_sizing_cap(self) -> None:
+        self.run_fixture("shard-sizing", "exceeds max_leaves_per_shard=6")
+
+    def test_shard_sizing_passes_at_the_cap(self) -> None:
+        """Six leaves is the cap, not one past it."""
+        def drop_seventh(project: Path) -> None:
+            (project / ".swarm/briefs/leaf-07.md").unlink()
+        result = self.mutate_fixture("shard-sizing", drop_seventh)
+        self.assertNotIn("shard-sizing:", result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_shard_sizing_counts_each_shard_separately(self) -> None:
+        """Splitting the same leaves across two shard dirs clears the cap."""
+        def split(project: Path) -> None:
+            briefs = project / ".swarm/briefs"
+            for name, leaves in (("shard-A", ("01", "02", "03", "04")),
+                                 ("shard-B", ("05", "06", "07"))):
+                (briefs / name).mkdir()
+                for leaf in leaves:
+                    (briefs / f"leaf-{leaf}.md").rename(
+                        briefs / name / f"leaf-{leaf}.md")
+        result = self.mutate_fixture("shard-sizing", split)
+        self.assertNotIn("shard-sizing:", result.stdout)
+
+    def test_shard_is_not_inferred_from_an_ancestor_directory(self) -> None:
+        """`_shard` once walked every parent, so a project checked out under
+        any path with a `shard-*` component inherited a phantom shard on every
+        brief — which pushes staging resolution at `pending/<shard>/leaf-NN/`,
+        a directory that does not exist, ahead of the real one. Only the
+        brief's own directory may name a shard."""
+        def bury(project: Path) -> None:
+            nested = project.parent / "shard-ancestor"
+            nested.mkdir()
+            project.rename(nested / project.name)
+            project.symlink_to(nested / project.name)
+        result = self.mutate_fixture("shard-sizing", bury)
+        self.assertIn("wave-1/default:", result.stdout)
+        self.assertNotIn("shard-ancestor", result.stdout)
+
     def test_missing_or_malformed_spec_link(self) -> None:
         self.run_fixture("malformed-spec-link", "missing Spec Link Rule header")
         self.run_fixture("missing-spec-link", "declared test file `tests/missing.py` not found")
