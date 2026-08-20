@@ -29,11 +29,12 @@ Three roles, three model tiers — pick by what kind of work the role does, not 
 
 - **Overlord (this chat)** — Opus 5. Decomposition (2.2/2.2a), spec/contract/umbrella drafting, and admission judgment calls are synthesis-shaped work where the stronger model earns its cost; this is the one context running for the whole cascade's duration. If the current chat is not already on Opus 5, tell the user before Phase 0 proceeds and let them switch (`/model opus`) — the skill does not switch its own host chat's model.
 - **Shard-test-writer** — Opus 5. Writing a correct, non-tautological test from spec+contract text alone (2.6) is the same judgment-quality bar as decomposition: a weak test here is invisible until a leaf has already implemented against it. Pass `model: "opus"` on the spawn call.
-- **Leaf implementers** — Sonnet 5, always, regardless of which `subagent_type` (Phase 4.2) is picked for a leaf. Implementing against an already-locked, already-audited failing test is bounded, mechanical work by design — that boundedness is the whole point of the brief template (see brief-template.md "Why this template"). Pass `model: "sonnet"` explicitly on every Phase 4 delegation call; do not let it inherit whatever the overlord happens to be running on.
+- **Leaf implementers** — Sonnet 4.6, always, regardless of which `subagent_type` (Phase 4.2) is picked for a leaf. Implementing against an already-locked, already-audited failing test is bounded, mechanical work by design — that boundedness is the whole point of the brief template (see brief-template.md "Why this template"). Pass `model: "claude-sonnet-4-6"` explicitly on every Phase 4 delegation call; do not let it inherit whatever the overlord happens to be running on.
 
-- **Test-fixer** — Sonnet 5. Repairing a test against an already-adjudicated audit finding (3.4.3) is bounded work with the answer attached, unlike authoring one from spec text. Pass `model: "sonnet"`.
+- **Test-fixer** — Sonnet 4.6. Repairing a test against an already-adjudicated audit finding (3.4.3) is bounded work with the answer attached, unlike authoring one from spec text. Pass `model: "claude-sonnet-4-6"`.
+- **Test-quality auditors** — Opus 5. Judging goal-fidelity and umbrella-alignment against a locked spec is the same judgment-quality bar as decomposition. Pass `model: "opus"` on every 3.4.2 spawn call.
 
-Test-quality auditors (3.4) and dependency-map/consolidation drafting sub-agents (Delegated drafting passes) are unaffected — pick their model the same way as before (no explicit override; inherits caller/tool default).
+Dependency-map/consolidation drafting sub-agents (Delegated drafting passes) are unaffected — no explicit override; inherits caller/tool default.
 
 ---
 
@@ -335,7 +336,7 @@ If FAIL is on **non-overlap**, surface both resolution paths (sequential waves v
 
 ### 3.4 Test-quality audit (external, before any leaf spawns)
 
-Once a shard's tests exist (2.6) and pass the invariant audit (3.0–3.3), spawn one fresh-context auditor per shard — same `caveman:cavecrew-reviewer`/`general-purpose`-fallback pattern used elsewhere in this skill, scoped to tests only — to audit that shard's test output before any leaf ever sees it. This is where test quality is judged: the overlord never grades its own (or the shard-test-writer's) tests directly, and no agent-based review of the implementation runs after admission. G8 (`test_quality_gate.py`, Phase 6.5) remains the mechanical backstop against orphaned/unreachable impl and weak assertions — this step is upstream and agent-judgment-based, G8 is downstream and scripted; they check different things and neither replaces the other.
+Once a shard's tests exist (2.6) and pass the invariant audit (3.0–3.3), spawn one fresh-context auditor per shard on Opus 5 (`model: "opus"` — see "Model defaults" above) — same `caveman:cavecrew-reviewer`/`general-purpose`-fallback pattern used elsewhere in this skill, scoped to tests only — to audit that shard's test output before any leaf ever sees it. This is where test quality is judged: the overlord never grades its own (or the shard-test-writer's) tests directly, and no agent-based review of the implementation runs after admission. G8 (`test_quality_gate.py`, Phase 6.5) remains the mechanical backstop against orphaned/unreachable impl and weak assertions — this step is upstream and agent-judgment-based, G8 is downstream and scripted; they check different things and neither replaces the other.
 
 #### 3.4.1 Overlord compiles the test-audit context package
 
@@ -399,7 +400,7 @@ Dispatch one auditor per shard in parallel (shards already don't share footprint
 Any 🔴/🟡 finding blocks that shard's leaves from Phase 4 spawn. Fixes are sized, and the size decides who makes them:
 
 - **Trivial** — the auditor quoted a replacement for a specific line, the change adds no new assertion and creates no new test file. The overlord may apply it inline and record it in `TEST-AUDIT.md`'s follow-up section.
-- **Everything else** — spawn a fresh **test-fixer** sub-agent on Sonnet 5 (`model: "sonnet"`), give it the audit finding, the test under repair, and the spec/contract excerpts it needs. It revises the test and confirms RED again. Not the flagged auditor, and not the context that wrote the original test.
+- **Everything else** — spawn a fresh **test-fixer** sub-agent on Sonnet 4.6 (`model: "claude-sonnet-4-6"`), give it the audit finding, the test under repair, and the spec/contract excerpts it needs. It revises the test and confirms RED again. Not the flagged auditor, and not the context that wrote the original test.
 
 Then 3.4.2 re-runs. Never silently wave through an unresolved 🔴.
 
@@ -411,7 +412,7 @@ Note the deliberate asymmetry with 2.6, which puts original test *authoring* on 
 
 ## Phase 4 — Spawn leaves
 
-After Phase 3 reports `all PASS`: take the wave baseline (4.0), build one sandbox per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 5 (`model: "sonnet"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together, not sequentially.
+After Phase 3 reports `all PASS`: take the wave baseline (4.0), build one sandbox per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 4.6 (`model: "claude-sonnet-4-6"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together, not sequentially.
 
 ### 4.0 Wave-baseline snapshot
 
@@ -495,7 +496,7 @@ what you changed and the paths you changed it at.
 
 ### 4.3 Subagent type selection
 
-This picks the *tool profile* (`subagent_type`), not the model — every impl leaf runs on Sonnet 5 regardless of which type below is chosen (see "Model defaults"). Default to **`general-purpose`** for every impl leaf. `cavecrew-builder`'s toolset is `Read, Edit, Write, Grep, Glob` only — **no `Bash`** — which means it cannot itself run the leaf's test command to confirm RED-then-GREEN; it can only manually trace test-vs-impl by reading, and every leaf that hits this gap has to explicitly flag "I could not execute the tests" rather than give the overlord a real pass/fail signal. That undermines the brief's own Acceptance step ("Confirm RED... Confirm GREEN"), which assumes the leaf itself runs the command. Pick by capability fit, not by habit:
+This picks the *tool profile* (`subagent_type`), not the model — every impl leaf runs on Sonnet 4.6 regardless of which type below is chosen (see "Model defaults"). Default to **`general-purpose`** for every impl leaf. `cavecrew-builder`'s toolset is `Read, Edit, Write, Grep, Glob` only — **no `Bash`** — which means it cannot itself run the leaf's test command to confirm RED-then-GREEN; it can only manually trace test-vs-impl by reading, and every leaf that hits this gap has to explicitly flag "I could not execute the tests" rather than give the overlord a real pass/fail signal. That undermines the brief's own Acceptance step ("Confirm RED... Confirm GREEN"), which assumes the leaf itself runs the command. Pick by capability fit, not by habit:
 
 - **`general-purpose`** — default choice for a normal impl leaf. Has `Bash`, so it can actually execute `test_file`'s test command before and after implementing, and report a real (not traced) RED→GREEN result. No hard file-count refusal, so brief sizing is governed by `impl_line_budget`/`test_assertion_budget` and the brief's own no-design-decision discipline, not by an incidental tool-selection ceiling.
 - **`caveman:cavecrew-builder`** — optional, narrower-blast-radius alternative for a leaf that is genuinely trivial (single small file, no need for the leaf itself to execute anything — e.g. the overlord or a downstream step will run tests) and where the caveman-compressed report is worth more than execution capability. Needs only `Read, Edit, Write, Grep, Glob` and ≤ 2 impl files (it hard-refuses at 3+). Do not reach for it by default; use it deliberately when its trade-off actually fits the leaf.
