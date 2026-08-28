@@ -288,6 +288,8 @@ Per-leaf tests are **not** written by the overlord directly, with no exception f
 
 **Boundary + scale sweep** — give the shard-test-writer `$SWARM_SHARED_DIR/references/test-design.md` and require the boundary table it specifies at `.swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/BOUNDARIES.md` before its tests count as done. Acceptance criteria describe the happy middle, so tests written from them alone certify the happy middle; the sweep is what forces a second pass over the edges, and its cardinality axis is where a leaf's `growth_claim` turns into an actual assertion. Boundaries the spec pins become tests citing the spec line. Boundaries the spec is **silent** on go to the question ledger (`.swarm/<cascade-slug>/questions/`) — the overlord batches every shard's open boundaries into one block for the user rather than letting the test-writer guess, since a guessed boundary is the same silent design decision this phase's authorship split exists to prevent.
 
+**No auto-pass (generated/matrix tests)** — if a leaf's tests are data-driven or parametrized from a generated set of cases (a probe's output, a fixture matrix, anything wider than hand-written cases), see test-design.md's "No auto-pass" section before writing them: every non-degenerate case needs a positively-defined, independently-computed expectation (never derived from the input under test itself), verdicts are a closed enum with no silent fall-through to PASS, and the grader itself gets validated against a stub-empty and a stub-all implementation before its output is trusted. Prefer a false-positive FAIL an investigation later clears over a false-negative auto-PASS nobody ever sees.
+
 **Composition rule (mockist)** — if a leaf's `impl_files` has more than one entry, its test must include at least one interaction assertion (e.g. monkeypatch/spy proving the orchestrator actually calls the collaborator), not just output-state checks. State-only tests can't tell an unused, orphaned function from a wired-in one. See `brief-template.md`'s test-writing guidance.
 
 **Spec Link Rule** — every test file MUST begin with a header comment of this exact shape:
@@ -471,19 +473,25 @@ The worktree is the leaf's working directory. Inside it the leaf edits its decla
 Each delegation call gets a self-contained prompt:
 
 ```
-You are leaf-NN of a TDD cascade. Read your brief at <briefs_dir>/leaf-NN.md
-in full before doing anything.
+You are leaf-NN of a TDD cascade. Read your brief at
+<absolute_briefs_dir>/leaf-NN.md in full before doing anything.
 
 You are working inside your own git worktree at
-.swarm/<cascade-slug>/worktrees/leaf-NN/ — a private checkout the parent
-manages, and your working directory. NEVER run git (no add, commit, stash,
-checkout, branch — nothing); the parent commits for you. Nothing you do there
-is visible to a sibling leaf or to the user's checkout.
+<absolute_worktree_root> — a private checkout the parent manages. This is an
+ABSOLUTE path; a subagent's shell cwd is the PARENT session's cwd, not this
+worktree, so you must not assume you start inside it. Prefix every
+impl/test file path you touch with <absolute_worktree_root> (e.g.
+<absolute_worktree_root>/<impl_file>), and run the test command with
+`cd <absolute_worktree_root> && <test_command>` — never a bare relative
+path. NEVER run git (no add, commit, stash, checkout, branch — nothing);
+the parent commits for you. Nothing you do there is visible to a sibling
+leaf or to the user's checkout.
 
-Your test file(s) are already written at <test_files paths> and are failing.
-Your job: edit <impl_files paths> IN PLACE, at their normal paths inside the
-worktree, until those tests pass. Run the test command yourself: confirm RED
-first, then GREEN.
+Your test file(s) are already written at <absolute_worktree_root>-prefixed
+<test_files paths> and are failing. Your job: edit
+<absolute_worktree_root>-prefixed <impl_files paths> IN PLACE, at their
+normal paths inside the worktree, until those tests pass. Run the test
+command yourself, from inside the worktree: confirm RED first, then GREEN.
 
 Do NOT stage, copy, or move anything anywhere — the parent commits your
 declared files from the worktree after you finish. Do NOT modify test files.

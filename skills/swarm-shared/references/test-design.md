@@ -14,6 +14,7 @@ outside it, and both have already shipped past this cascade's existing gates.
 - [BOUNDARIES.md](#boundariesmd) — what you write, and what you escalate
 - [Scale assertions](#scale-assertions) — ratio bands and the method that survives parallel spawn
 - [Anti-gaming rules](#anti-gaming-rules) — how a scale test gets faked
+- [No auto-pass: generated and matrix tests](#no-auto-pass-generated-and-matrix-tests) — vacuous expectations in data-driven suites
 - [Gotchas](#gotchas) — two real misses from this project
 - [Deliberately out of scope](#deliberately-out-of-scope)
 
@@ -134,6 +135,57 @@ quadratic:
 - **Count work, not calls to your own wrapper.** Spy on the operation that actually
   scales (comparisons, row fetches, allocations), not on the entry point, which is
   called once regardless.
+
+## No auto-pass: generated and matrix tests
+
+Applies whenever a test (or a pre-cascade probe whose output becomes the test
+list, e.g. a data-driven/parametrized suite) is generated from a data set
+rather than hand-written one case at a time. **No row may pass by absence of
+an expectation.** Every row must carry a positively defined expected result,
+computed independently of the code under test, and anything not matching it
+is a failure to investigate — never a silent pass. Prefer a false positive
+(a case flagged FAIL that turns out fine on investigation) over a false
+negative (a case that auto-passes and is never even seen).
+
+**How this actually breaks, concretely.** A search-quality probe generated
+queries by mutating known names (typos, transpositions) and derived
+`expected` by checking whether the *mutated query string itself* was a
+literal substring of the target name. `Marcsu` is not a substring of
+`marcus whitfield`, so `expected` came back empty, the "missing expected
+results" check trivially passed against an empty set, and the grader
+reported PASS for every typo/reorder/case/whitespace row **regardless of
+what the server actually returned** — including an empty response. The
+entire typo-handling population auto-passed and a downstream suite selecting
+on `status == FAIL` would have generated zero tests for it. The bug was
+deriving the expectation from the mutated query text when the query was
+generated *from a known source row* — that row's id was the answer all
+along, and the generator has to carry it through (provenance), not recompute
+it from the mutation.
+
+**Structural rules, so the failure mode is unrepresentable rather than
+fixed once:**
+
+- Every generated case carries **provenance** (the source row/id it was
+  built from) when applicable — typo, reorder, and similar mutation classes
+  are graded against their known source, never against the mutated string.
+- Every non-degenerate, non-"asserted absent" case has a **non-empty**
+  expectation. A case whose expectation is legitimately empty (e.g. a query
+  synthesized to match nothing) is a distinct class (`negative`), not the
+  default.
+- Verdicts are a **closed enum** (e.g. `PASS | FAIL_MISSING | FAIL_EXTRA |
+  FAIL_RANK | UNGRADED`), and any `UNGRADED` row aborts the run — there is
+  no silent fall-through to PASS.
+- Grading is **two-sided**: missing expected results *and* unexpected extras
+  both fail. A one-sided "did we miss anything" grader cannot see
+  over-matching (e.g. an overly permissive prefix tier).
+
+**Validate the grader before trusting its output.** Run it against at least
+two deliberately-wrong stub implementations — one that returns nothing for
+every input, one that returns everything — before running it against the
+real code. Any class that reports zero failures against *both* stubs is
+vacuous by construction: it cannot fail no matter what the code under test
+does, which means it isn't testing anything. This is the check that catches
+the bug above before a single real result is trusted, not after.
 
 ## Gotchas
 
