@@ -744,6 +744,14 @@ Apex failure does NOT auto-revert (multiple leaves admitted; attributing the fai
 
 ### 7.2 Report
 
+Before printing, record the cascade — one command, zero LLM tokens:
+
+```bash
+python "$SWARM_SHARED_DIR/scripts/cascade_metrics.py" --cascade <cascade-slug> --live [--variant <label>]
+```
+
+It reads the local Claude Code transcripts for this cascade's window (first `git-ops.log` line → now), attributes tokens and $ to the overlord and to each sub-agent role (deduped by `message.id`, priced from `rates.json`), joins the cascade's own artifacts (gate rows, audit severities and rounds, log rows, questions/proposals, sweep flags), and writes `.swarm/<cascade-slug>/METRICS.{md,json}` plus a copy in `~/.claude/swarm-metrics/` that survives a gitignored `.swarm/`. Pass `--variant` when a skill variant is under test so runs can be compared later. Surface only its summary line; the cost line below comes from it. Exit 1 means it recorded with a gap (named on stderr) — say so in the report, do not hand-fill numbers. Why this runs every time: the 2026-08 audit found the overlord chat is ~78% of a cascade's cost and had never been measured, because nothing recorded it at the time.
+
 Print to the user:
 
 ```
@@ -755,6 +763,7 @@ Wave <wave> complete.
 | leaf-02 | REVERTED | regression: tests/test_cache.py::test_miss |
 | ...     |       |          |
 
+Cost: overlord $X (P%), sub-agents $Y over N spawns, total $Z, W min  (METRICS.md)
 Totals: N admitted, M reverted, K escalated.
 Apex: <PASS | skipped | FAILED>.
 

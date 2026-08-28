@@ -12,6 +12,7 @@ This is a **support skill**, not an invocable one. At runtime `/manager-mode` re
 - `references/config.md` — config file reference
 - `references/evaluation-rubric.md` — review scoring rubric
 - `scripts/check_invariants.py` — invariant audit helper
+- `scripts/cascade_metrics.py` — records a cascade's token cost + outcome (Phase 7.2); `rates.json` beside it holds USD/MTok per model
 - `templates/` — config templates
 
 If you reached this file by reading it directly: nothing to do here. Invoke `/manager-mode` instead.
