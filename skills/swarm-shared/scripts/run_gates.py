@@ -22,10 +22,10 @@ So this runner does three things prose cannot:
 
 What it deliberately does NOT do
 --------------------------------
-It never mutates the project. No copying to destinations, no backups, no
-revert, no umbrella run. Admission changes state and belongs to the overlord
-under the user's eye; this is the read-only verification that runs first. The
-one file it writes is its own report.
+It never mutates the project. No merge, no reset, no umbrella run, no log
+row — every git call here is a read-only query. Admission changes state and
+belongs to `worktree_ops.py admit`, which refuses to run until this runner has
+written a GATES.md with no FAIL row. The one file it writes is its own report.
 
 Exit codes: 0 all gates pass, 1 blocking findings, 2 resolution/config error.
 """
@@ -46,6 +46,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_invariants as ci  # noqa: E402
+import worktree_ops as wo  # noqa: E402
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -147,21 +148,39 @@ def _first_existing(candidates: list[Path]) -> Path | None:
     return None
 
 
-def resolve_sandbox_dir(root: Path, leaf_id: str, slug: str | None,
-                        explicit: Path | None) -> Path | None:
+def resolve_worktree_dir(root: Path, leaf_id: str, slug: str | None,
+                         explicit: Path | None) -> Path | None:
+    """The leaf's git worktree (Phase 4.1). None once it has been admitted or
+    reverted — both remove the worktree, and both happen after this runner."""
     if explicit:
         return explicit if explicit.is_dir() else None
+    return _first_existing([cascade_dir(root, slug) / "worktrees" / leaf_id])
+
+
+def resolve_base(root: Path, slug: str | None, wave: int) -> Path | None:
+    """wave-N.base.json, written by worktree_ops.py base (Phase 4.0)."""
     return _first_existing([
-        cascade_dir(root, slug) / "sandbox" / leaf_id,
-        root / ".swarm" / "sandbox" / leaf_id,
+        cascade_dir(root, slug) / f"wave-{wave}.base.json",
+        root / ".swarm" / f"wave-{wave}.base.json",
     ])
 
 
-def resolve_snapshot(root: Path, slug: str | None, wave: int) -> Path | None:
-    return _first_existing([
-        cascade_dir(root, slug) / f"wave-{wave}.snapshot.json",
-        root / ".swarm" / f"wave-{wave}.snapshot.json",
-    ])
+def _git(args: list[str], cwd: Path) -> str | None:
+    """Read-only git query; None when git refuses. This runner never mutates."""
+    proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
+    return proc.stdout.rstrip("\n") if proc.returncode == 0 else None
+
+
+def _porcelain_paths(text: str) -> list[str]:
+    out = []
+    for line in text.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1]
+        out.append(path.strip().strip('"').rstrip("/"))
+    return out
 
 
 def resolve_sweep(root: Path, slug: str | None, wave: int) -> Path | None:
@@ -218,13 +237,13 @@ def check_artifacts(root: Path, slug: str | None, wave: int, shard: str,
     """
     out: list[GateResult] = []
 
-    snap = resolve_snapshot(root, slug, wave)
+    base = resolve_base(root, slug, wave)
     out.append(GateResult(
         "A1 wave-baseline snapshot",
-        "PASS" if snap else "FAIL",
-        str(snap.relative_to(root)) if snap
-        else f"no wave-{wave}.snapshot.json — Phase 4.0 never ran, so G5 "
-             f"cannot compare anything",
+        "PASS" if base else "FAIL",
+        str(base.relative_to(root)) if base
+        else f"no wave-{wave}.base.json — Phase 4.0 never ran (worktree_ops.py base), so "
+             f"file-match and G5 have no base commit to diff against",
     ))
 
     sweep = resolve_sweep(root, slug, wave)
@@ -270,26 +289,54 @@ def check_artifacts(root: Path, slug: str | None, wave: int, shard: str,
 
 # ---------- per-leaf gates ----------
 
-def check_file_match(staging: Path, declared: list[str]) -> GateResult:
-    if not staging.is_dir():
-        return GateResult("6.3 file-match", "FAIL",
-                          f"staging dir not found: {staging}")
-    staged = sorted(
-        p.relative_to(staging).as_posix()
-        for p in staging.rglob("*") if p.is_file()
-    )
-    want = sorted(declared)
-    if staged == want:
+def _changed_set(root: Path, base_sha: str, leaf_rec: dict[str, Any],
+                 worktree: Path | None, ignore: list[str]) -> tuple[set[str] | None, str]:
+    """What the leaf produced: its commit's diff against base, or — before
+    Phase 5.1 committed — the worktree's uncommitted changes."""
+    commit = leaf_rec.get("commit")
+    if commit:
+        out = _git(["diff", "--name-only", f"{base_sha}..{commit}"], root)
+        if out is None:
+            return None, f"cannot diff {base_sha[:12]}..{commit[:12]}"
+        return set(out.split()), f"commit {commit[:12]}"
+    if worktree is not None:
+        out = _git(["status", "--porcelain", "--untracked-files=all"], worktree)
+        if out is None:
+            return None, f"git status failed in {worktree}"
+        return {p for p in _porcelain_paths(out) if not _ignored(p, ignore)}, "uncommitted worktree"
+    return None, "no commit recorded and no worktree present"
+
+
+def check_file_match(root: Path, base_sha: str, leaf_rec: dict[str, Any],
+                     worktree: Path | None, declared: list[str],
+                     impl_files: list[str], ignore: list[str]) -> GateResult:
+    """6.3. Everything the leaf changed is declared, and every declared impl
+    file exists on its branch. Unchanged parent-owned test files are declared
+    but legitimately absent from the diff — the leaf may not touch them."""
+    changed, where = _changed_set(root, base_sha, leaf_rec, worktree, ignore)
+    if changed is None:
+        return GateResult("6.3 file-match", "FAIL", where)
+    want = set(declared)
+    extra = sorted(changed - want)
+    ref = leaf_rec.get("commit")
+    missing = []
+    for rel in impl_files:
+        if ref:
+            present = _git(["cat-file", "-e", f"{ref}:{rel}"], root) is not None
+        else:
+            present = worktree is not None and (worktree / rel).exists()
+        if not present:
+            missing.append(rel)
+    if not extra and not missing:
         return GateResult("6.3 file-match", "PASS",
-                          f"{len(want)} declared, {len(staged)} staged, paths identical")
-    extra = [p for p in staged if p not in want]
-    missing = [p for p in want if p not in staged]
+                          f"{len(changed)} changed path(s) ⊆ {len(want)} declared; "
+                          f"all {len(impl_files)} impl file(s) present ({where})")
     bits = []
     if missing:
         bits.append(f"missing {missing}")
     if extra:
         bits.append(f"unexpected {extra}")
-    return GateResult("6.3 file-match", "FAIL", "; ".join(bits))
+    return GateResult("6.3 file-match", "FAIL", "; ".join(bits) + f" ({where})")
 
 
 def check_parent_owned(brief: ci.Brief, declared: list[str],
@@ -366,44 +413,61 @@ def check_proposals(root: Path, slug: str | None, leaf_id: str) -> GateResult:
     return GateResult("G4 contract-proposal", "PASS", f"{path.name} is `{status}`")
 
 
-def check_footprint(root: Path, snapshot: Path | None, sandbox: Path | None,
-                    declared: list[str], ignore: list[str]) -> GateResult:
-    """G5. Every file differing from the wave baseline must be declared.
+def check_footprint(root: Path, base_sha: str | None, leaf_rec: dict[str, Any],
+                    worktree: Path | None, declared: list[str],
+                    ignore: list[str]) -> list[GateResult]:
+    """G5. Every path the leaf changed must be declared, and the leaf must not
+    have run git itself (its commit sits exactly one step above base; its
+    worktree HEAD is base until Phase 5.1 commits).
 
-    The old form compared only paths *outside* the leaf's footprint, against a
-    snapshot taken *after* every leaf had finished. It could not detect a
-    footprint breach on either axis, and reported clean through one.
+    Live-tree drift in the user's checkout is reported as ADVISORY, not FAIL:
+    admission never writes to that tree any more, so drift there cannot
+    corrupt an admission — and blocking on it is what produced the hand-written
+    G5 waivers in every real cascade.
     """
-    if snapshot is None:
-        return GateResult("G5 footprint", "FAIL",
-                          "no wave baseline to compare against")
-    base = json.loads(snapshot.read_text()).get("hashes", {})
-    if not base:
-        return GateResult("G5 footprint", "FAIL",
-                          f"{snapshot.name} carries no hashes")
+    if base_sha is None:
+        return [GateResult("G5 footprint", "FAIL", "no wave base to compare against")]
+    out: list[GateResult] = []
     declared_set = set(declared)
     offenders: list[str] = []
-    scanned = 0
-
-    def scan(tree: Path, label: str) -> None:
-        nonlocal scanned
-        for rel, path in _walk(tree, ignore).items():
-            scanned += 1
-            if base.get(rel) != _sha256(path) and rel not in declared_set:
-                offenders.append(f"{label}:{rel}")
-
-    if sandbox is not None:
-        scan(sandbox, "sandbox")
-    # The real tree must still match the baseline: nothing is admitted yet.
-    scan(root, "live")
-
-    if offenders:
-        return GateResult("G5 footprint", "FAIL",
-                          f"{len(offenders)} undeclared difference(s): "
-                          f"{offenders[:8]}")
-    where = "sandbox + live tree" if sandbox is not None else "live tree only"
-    return GateResult("G5 footprint", "PASS",
-                      f"{scanned} files checked ({where}); every difference declared")
+    ran_git: list[str] = []
+    commit = leaf_rec.get("commit")
+    if commit:
+        parents = (_git(["rev-parse", f"{commit}^@"], root) or "").split()
+        if parents != [base_sha]:
+            ran_git.append(f"commit {commit[:12]} is not exactly one step above base "
+                           f"{base_sha[:12]} (parents {[p[:12] for p in parents]})")
+        for rel in (_git(["diff", "--name-only", f"{base_sha}..{commit}"], root) or "").split():
+            if rel not in declared_set:
+                offenders.append(f"branch:{rel}")
+    if worktree is not None:
+        head = _git(["rev-parse", "HEAD"], worktree)
+        expect = commit or base_sha
+        if head != expect:
+            ran_git.append(f"worktree HEAD {str(head)[:12]} != {expect[:12]}: the leaf ran git")
+        status = _git(["status", "--porcelain", "--untracked-files=all"], worktree) or ""
+        for rel in _porcelain_paths(status):
+            if _ignored(rel, ignore):
+                continue
+            if commit or rel not in declared_set:
+                offenders.append(f"worktree:{rel}")
+    if ran_git:
+        out.append(GateResult("G5 footprint", "FAIL", "; ".join(ran_git)))
+    elif offenders:
+        out.append(GateResult("G5 footprint", "FAIL",
+                              f"{len(offenders)} undeclared difference(s): {offenders[:8]}"))
+    else:
+        where = "commit" if commit else "worktree"
+        out.append(GateResult("G5 footprint", "PASS",
+                              f"every {where} difference is declared; leaf never ran git"))
+    live = [p for p in _porcelain_paths(_git(["status", "--porcelain"], root) or "")
+            if not _ignored(p, ignore)]
+    if live:
+        out.append(GateResult("G5 live-tree drift", "ADVISORY",
+                              f"{len(live)} path(s) changed in the user's checkout during the wave "
+                              f"(not blocking — admission merges into integration, never here): "
+                              f"{['live:' + p for p in live[:8]]}"))
+    return out
 
 
 def check_escalations(brief: ci.Brief, root: Path, slug: str | None,
@@ -519,9 +583,9 @@ def render(leaf_id: str, wave: int, shard: str,
         f"{sum(1 for r in results if r.status == 'ADVISORY')} advisory, "
         f"{sum(1 for r in results if r.status == 'PASS')} pass.",
         "",
-        "Admission itself (backup, copy, umbrella pre/post, log row) is the",
-        "overlord's step and is deliberately not automated here — this runner",
-        "never mutates the project.",
+        "Admission itself (merge into integration, umbrella pre/post, log row)",
+        "is `worktree_ops.py admit` and is deliberately not done here — this",
+        "runner never mutates the project.",
         "",
     ]
     return "\n".join(lines)
@@ -535,8 +599,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--root", type=Path, default=Path.cwd())
     p.add_argument("--briefs-dir", type=Path)
     p.add_argument("--cascade", help="cascade slug; auto-detected when exactly one exists")
-    p.add_argument("--staging-dir", type=Path)
-    p.add_argument("--sandbox-dir", type=Path)
+    p.add_argument("--worktree-dir", type=Path,
+                   help="default: <root>/.swarm/<cascade>/worktrees/<leaf>")
     p.add_argument("--wave", type=int, help="default: the brief's own wave")
     p.add_argument("--strict", action="store_true",
                    help="pass --strict to G8/G9/G10 and block on a missing "
@@ -544,7 +608,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--out", type=Path, help="default: the shard's audit dir")
     args = p.parse_args(argv)
 
-    root = ci.git_root(args.root)
+    root = wo.main_root(args.root.resolve())
     cfg = ci.load_config(root)
     slug = ci.discover_cascade_slug(root, args.cascade)
     briefs_dir = ci.resolve_briefs_dir(root, cfg, args.briefs_dir, args.cascade)
@@ -564,25 +628,30 @@ def main(argv: list[str] | None = None) -> int:
     wave = args.wave if args.wave is not None else ci._wave(brief)
     shard = ci._shard(brief)
     declared = ci._leaf_paths(brief, "test") + ci._leaf_paths(brief, "impl")
-    staging = ci.resolve_staging_dir(root, args.leaf, shard=shard, slug=slug,
-                                     explicit=args.staging_dir)
-    sandbox = resolve_sandbox_dir(root, args.leaf, slug, args.sandbox_dir)
-    ignore = list(cfg.get("snapshot_ignore") or DEFAULT_IGNORE)
+    impl_files = ci._leaf_paths(brief, "impl")
+    worktree = resolve_worktree_dir(root, args.leaf, slug, args.worktree_dir)
+    ignore = wo.effective_ignore(cfg)
+    base_path = resolve_base(root, slug, wave)
+    base_data = json.loads(base_path.read_text()) if base_path else {}
+    base_sha = base_data.get("base_sha")
+    leaf_rec = (base_data.get("leaves") or {}).get(args.leaf) or {}
+    # The worktree is the tree the delegated gates and G6 inspect: declared
+    # files sit at their real paths there, exactly as staging used to hold them.
+    tree = worktree if worktree is not None else root
 
     results: list[GateResult] = []
     results.append(check_bypass(root, slug, wave, briefs_dir, args.leaf))
     results += check_artifacts(root, slug, wave, shard, briefs_dir, args.leaf,
                                require_boundaries=args.strict)
-    results.append(check_file_match(staging, declared))
+    results.append(check_file_match(root, base_sha or "", leaf_rec, worktree,
+                                    declared, impl_files, ignore))
     results.append(check_parent_owned(brief, declared, cfg["parent_owned"]))
     results.append(check_assumptions(briefs_dir, args.leaf))
     results.append(check_questions(root, slug, briefs_dir, args.leaf))
     results.append(check_proposals(root, slug, args.leaf))
-    results.append(check_footprint(root, resolve_snapshot(root, slug, wave),
-                                   sandbox, declared, ignore))
-    results.append(check_escalations(brief, root, slug, staging, args.leaf))
-    results += run_delegated(root, args.leaf, slug, briefs_dir, staging,
-                             args.strict)
+    results += check_footprint(root, base_sha, leaf_rec, worktree, declared, ignore)
+    results.append(check_escalations(brief, root, slug, tree, args.leaf))
+    results += run_delegated(root, args.leaf, slug, briefs_dir, tree, args.strict)
 
     report = render(args.leaf, wave, shard, results)
     out = args.out or gates_path(root, slug, wave, args.leaf)
