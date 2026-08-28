@@ -48,7 +48,7 @@ class ManagerModeContractTests(unittest.TestCase):
             "**G6 escalation-trigger**", "**G8 test-quality gate**",
             "**G9 complexity gate**", "**G10 scale gate**",
             "check_invariants.py", "test_quality_gate.py", "complexity_gate.py",
-            "parent_owned", "bypass", "wave-baseline", "Assumption-sweep",
+            "parent_owned", "bypass", "wave base commit", "Assumption-sweep",
             "admit-or-revert", "File-match rule", "Apex",
             "post-review-log.md", "| wave | shard | leaf_id |",
         )
@@ -110,14 +110,26 @@ class ManagerModeContractTests(unittest.TestCase):
         escaped it. Losing either silently restores the contradiction.
         """
         required = (
-            "### 4.0 Wave-baseline snapshot",
-            "### 4.1 Build one sandbox per leaf",
-            ".swarm/<cascade-slug>/sandbox/leaf-NN/",
-            "sandbox_link",
-            "### 5.1 Harvest sandboxes into staging",
-            "no leaf-owned exclusion",
+            "### 4.0 Wave base commit",
+            "### 4.1 Create one worktree per leaf",
+            ".swarm/<cascade-slug>/worktrees/leaf-NN/",
+            "worktree_link",
+            "### 5.1 Commit leaf worktrees",
+            "swarm/<cascade-slug>/integration",
+            "--no-ff",
+            "worktree_ops.py",
+            "NEVER run git",
         )
         for token in required:
+            self.assertIn(token, REGULAR, token)
+        # The copy-per-leaf design must not creep back in.
+        for token in ("sandbox/leaf-NN", "snapshot.json", "pending/leaf-NN", "backups/leaf-NN"):
+            self.assertNotIn(token, REGULAR, token)
+
+    def test_user_branch_is_written_only_with_consent(self) -> None:
+        """Two confirmed writes, nothing else: the base commit and the final ff."""
+        for token in ("--commit-artifacts --yes", "### 7.4 Finish", "git reset --soft HEAD~1",
+                      "never rebase", "Residual git state"):
             self.assertIn(token, REGULAR, token)
 
     def test_gate_evidence_backs_the_bypass_check(self) -> None:
@@ -172,7 +184,7 @@ class ManagerModeContractTests(unittest.TestCase):
     def test_model_tiers_are_pinned_per_role(self) -> None:
         """Leaves must not silently inherit the overlord's model."""
         required = (
-            "Opus 5", "Sonnet 5", 'model: "opus"', 'model: "sonnet"',
+            "Opus 5", "Sonnet 4.6", 'model: "opus"', 'model: "claude-sonnet-4-6"',
         )
         for token in required:
             self.assertIn(token, REGULAR, token)

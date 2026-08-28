@@ -26,25 +26,30 @@ umbrella_test_cmd = "pytest tests/umbrella.py"
 apex_test_cmd     = ""
 graphify_cmd      = ""                   # empty string → fall back to import-graph heuristic
 
-# Optional: paths excluded from the Phase 4.0 wave-baseline snapshot (and so
-# from G5), and skipped when a leaf sandbox is built. Defaults below. Add
-# project-specific generated dirs as needed.
-snapshot_ignore   = [
+# Optional: paths G5 and the Phase 5.1 commit step disregard inside a leaf
+# worktree. Defaults below. Add project-specific generated dirs as needed.
+# (Old name `snapshot_ignore` is still accepted, with a deprecation note.)
+footprint_ignore  = [
   ".git/**", ".swarm/**", "__pycache__/**",
   "node_modules/**", ".venv/**", "*.pyc",
-  # Test-runner scratch. The leaf runs its own test command inside the
-  # sandbox, so these appear there and nowhere else — without them every
-  # Python leaf trips G5 on caches its own passing test wrote.
+  # Test-runner scratch. The leaf runs its own test command inside its
+  # worktree, so these appear there — without them every Python leaf trips
+  # G5 on caches its own passing test wrote.
   ".pytest_cache/**", ".mypy_cache/**", ".ruff_cache/**",
   ".coverage", "htmlcov/**", "*.egg-info/**",
 ]
 
-# Optional: dependency trees a leaf sandbox SYMLINKS instead of copying
-# (Phase 4.1). These are usually the bulk of a repo by size and are never
-# leaf-owned, so copying them per leaf is pure cost — but omitting them
-# entirely breaks the leaf's own test command, which is the whole point of
-# the sandbox. Symlinking is the only option that satisfies both.
-sandbox_link      = ["node_modules", ".venv", "venv", "vendor", "target"]
+# Optional: untracked dependency trees SYMLINKED from the main checkout into
+# every worktree (Phase 4.1). A worktree checks out tracked files only, so
+# without these the leaf's own test command breaks — which is the whole point
+# of the worktree. The names are also written to each worktree's info/exclude
+# (a symlink named `.venv` is NOT matched by a `.venv/` ignore pattern) and
+# are part of G5's effective ignore set. (Old name `sandbox_link` accepted.)
+worktree_link     = ["node_modules", ".venv", "venv", "vendor", "target"]
+
+# Optional: untracked files a leaf needs that must be COPIED, not linked
+# (e.g. ".env.test", generated fixtures). Default empty.
+worktree_copy     = []
 
 # Files the parent owns. Globs. No leaf may name a file matching these.
 
@@ -56,7 +61,7 @@ parent_owned = [
 ]
 
 [invariants]
-max_impl_lines        = 200
+max_impl_lines        = 1000
 max_test_assertions   = 20
 
 # Leaves one shard-test-writer may own. A shard is a partition of a wave, and
@@ -123,15 +128,21 @@ One cascade, one directory:
   <cascade-slug>/
     PLAN-CHECK.md                 # Phase 1.5
     briefs/          leaf-NN.md, leaf-NN.ASSUMPTIONS.md
-    sandbox/         leaf-NN/<project tree>        # Phase 4.1
-    pending/         [shard-<id>/]leaf-NN/<staged paths>
-    backups/         leaf-NN/<pre-admission copies>
+    worktrees/       leaf-NN/        # git worktree on swarm/<slug>/leaf-NN (Phase 4.1)
+                     integration/    # git worktree on swarm/<slug>/integration (Phase 4.0)
     audits/          wave-<N>/<shard-or-default>/...
                      wave-<N>/leaf-NN.GATES.md
+                     wave-<N>/leaf-NN.COMMIT       # sha written by Phase 5.1
     questions/       answers/       proposals/
-    wave-<N>.snapshot.json
+    wave-<N>.base.json               # base commit + per-leaf branch/commit/merge shas
     wave-<N>.SWEEP.md
+    git-ops.log                      # append-only: every git call worktree_ops.py made
 ```
+
+Branches: `swarm/<slug>/leaf-NN` (one per leaf, deleted on admit), `swarm/<slug>/reverted/leaf-NN`
+(kept after a revert — the commit is the forensic record), `swarm/<slug>/integration`
+(admission target; fast-forwarded into the user's branch by `sync`/`finish`, then deleted).
+`worktree_ops.py status --slug <slug>` lists whatever survives.
 
 `post-review-log.md` deliberately stays at the `.swarm/` root: it is
 append-only history across every cascade in the project and already carries a
@@ -139,8 +150,8 @@ append-only history across every cascade in the project and already carries a
 
 **Legacy flat layout still resolves.** `check_invariants.py`,
 `test_quality_gate.py` and `scale_gate.py` look for the per-cascade shape
-first and fall back to flat `.swarm/briefs/` + `.swarm/pending/<leaf>` when it
-is absent, so a project that predates the slug keeps working. Each accepts
+first and fall back to flat `.swarm/briefs/` when it is absent, so a project
+that predates the slug keeps working (its old `pending/` staging is no longer read). Each accepts
 `--cascade <slug>`; the slug auto-detects when exactly one `.swarm/*/briefs/`
 exists, and the scripts ask rather than guess when several do.
 

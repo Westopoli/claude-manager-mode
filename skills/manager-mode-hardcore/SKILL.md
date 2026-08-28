@@ -9,7 +9,7 @@ Hardcore is `/manager-mode` with one deliberately narrow replacement: its Phase 
 
 Theory, brief template, and config schema use the same shared assets as `/manager-mode`. Resolve `SWARM_SHARED_DIR` with `/manager-mode`'s Shared asset resolver, then use `$SWARM_SHARED_DIR/references/playbook.md`, `brief-template.md`, and `config.md`. Nothing here duplicates those; Hardcore only changes Phase 3.4 and how many roles participate in it.
 
-Read `/manager-mode` first and execute its Phases 0–7 unchanged EXCEPT Phase 3.4, which this file replaces: preflight, lite-discovery, the blocking Phase 1.5 plan-consistency pass, shard-test-writer per-leaf RED tests, the rest of Phase 3's invariant audit (non-overlap, no-design, no-contradiction, sizing, shard-sizing, spec-link, codebase-preconditions), dependency map + consolidation pass + 16-leaf sizing limit, parent ownership, the Phase 4.0 wave baseline and per-leaf sandboxes, parallel builder dispatch, sandbox harvest + sweep, questions/proposals, bypass detection and its per-leaf gate evidence, G1–G10, file-match, umbrella pre/post checks, admit-or-revert, apex testing, and reporting.
+Read `/manager-mode` first and execute its Phases 0–7 unchanged EXCEPT Phase 3.4, which this file replaces: preflight, lite-discovery, the blocking Phase 1.5 plan-consistency pass, shard-test-writer per-leaf RED tests, the rest of Phase 3's invariant audit (non-overlap, no-design, no-contradiction, sizing, shard-sizing, spec-link, codebase-preconditions), dependency map + consolidation pass + 16-leaf sizing limit, parent ownership, the Phase 0.0 git preflight, the Phase 4.0 wave base commit and per-leaf git worktrees, parallel builder dispatch, worktree commit + sweep, questions/proposals, bypass detection and its per-leaf gate evidence, G1–G10, file-match, umbrella pre/post checks, admit-or-revert, apex testing, and reporting.
 
 Two differences within that unchanged flow. First, Phase 6.5's runner takes `--strict`:
 
@@ -51,4 +51,4 @@ The adjudicator writes its verdict to `TEST-AUDIT-ADJUDICATION.md` in the shard'
 
 The overlord aggregates the shard's audit directory into `.swarm/audits/wave-<wave>/<shard-or-default>/PRE-IMPL-AUDIT-SUMMARY.md`, containing both auditors' report paths, the adjudicator's verdict, any revise-and-re-audit cycles and their count, and final audit-clean status per shard. Update the normal Phase 7 report with those same counts.
 
-No audit record belongs in `post-review-log.md`; it remains the append-only normal-admission history. Shards remain file-disjoint and retain separate wave snapshots and sweeps. No phase may bypass the base skill's existing gates.
+No audit record belongs in `post-review-log.md`; it remains the append-only normal-admission history. Shards remain file-disjoint and retain separate wave base commits and sweeps. No phase may bypass the base skill's existing gates.

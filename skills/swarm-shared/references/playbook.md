@@ -85,7 +85,7 @@ Runs on Opus 5, same tier as the parent — judging whether a test correctly enc
 
 ### Leaf
 
-Runs on Sonnet 5, always — implementing against an already-locked, already-audited failing test is bounded mechanical work by design, not a judgment call, so it doesn't need the heavier tier. Receives one assignment: one test file, one impl file, the spec line range it must satisfy, the DO-NOT-EDIT list, and the contract imports it may use. Works inside its own sandbox (below): runs test → confirms RED → writes minimum impl → confirms GREEN → stops. Creates its declared `impl_files` when they don't exist yet, and nothing else. Never edits anything outside its assignment.
+Runs on Sonnet 4.6, always — implementing against an already-locked, already-audited failing test is bounded mechanical work by design, not a judgment call, so it doesn't need the heavier tier. Receives one assignment: one test file, one impl file, the spec line range it must satisfy, the DO-NOT-EDIT list, and the contract imports it may use. Works inside its own git worktree (below), never running git itself: runs test → confirms RED → writes minimum impl → confirms GREEN → stops. Creates its declared `impl_files` when they don't exist yet, and nothing else. Never edits anything outside its assignment.
 
 **Owns internals, escalates externals.** A leaf makes small implementation choices freely — helper names, where a private function boundary falls inside its own file, control-flow shape. What it may not decide alone is anything a sibling leaf or the umbrella test could observe from outside its file: a public signature, a contract symbol, an unpinned business rule. Those go to the question ledger, where it proceeds under a logged best-guess rather than blocking (see "Synchronous waits" below — a leaf that stalls waiting for the parent stalls the wave). This is the same boundary `/manager-mode` Phase 4.1 states to the leaf directly; the older "never makes design decisions, stops and reports, does not guess" phrasing overstated it in both directions at once.
 
@@ -173,21 +173,21 @@ Failure mode prevented: leaf needs a type contract extended. Today the leaf eith
 - **Direct leaf-to-leaf messaging.** Would make the cascade a graph; would destroy regression attribution; would create deadlock and ordering bugs. Not added under any pretext.
 - **Shared mutable state owned by N leaves.** Would break file-ownership invariant (the first invariant). Not added.
 - **Synchronous waits.** A leaf cannot block on parent action; it proceeds under best-guess and the gate checks consistency at admission time. Async by design.
-- **Cross-leaf reads of pending impl code.** Leaves may read sibling ASSUMPTIONS (immutable once published, structurally separate from impl) but never sibling impl, in a sibling's sandbox or in `.swarm/<cascade-slug>/pending/`. Coupling admission order to file resolution would create dependency hell.
+- **Cross-leaf reads of pending impl code.** Leaves may read sibling ASSUMPTIONS (immutable once published, structurally separate from impl) but never sibling impl, in a sibling's worktree or on a sibling's branch. Coupling admission order to file resolution would create dependency hell.
 
 All three additions are strictly additive: each is a gate that, if turned off, reverts to the pre-coordination behavior. They do not change the cascade shape, the three invariants, or the parent-only-arbitrates rule.
 
 ---
 
-## The sandbox is what makes isolation real
+## The worktree is what makes isolation real
 
-Each leaf works in its own copy of the project at `.swarm/<cascade-slug>/sandbox/leaf-NN/` (Phase 4.1). It edits its declared impl files there, at their normal paths, and confirms RED→GREEN against them. It stages nothing by hand: Phase 5 harvests the declared paths out of the sandbox into `.swarm/<cascade-slug>/pending/leaf-NN/`, and Phase 6 copies those to real destinations only after every gate passes.
+Each leaf works in its own git worktree at `.swarm/<cascade-slug>/worktrees/leaf-NN/`, on branch `swarm/<cascade-slug>/leaf-NN` cut from the wave base commit (Phase 4.0/4.1). It edits its declared impl files there, at their normal paths, and confirms RED→GREEN against them. It runs no git and stages nothing by hand: Phase 5 commits the declared paths from the worktree (`worktree_ops.py commit`, which refuses on any undeclared write), and Phase 6 merges that commit into `swarm/<cascade-slug>/integration` only after every gate passes.
 
-The real project is untouched for the entire duration of the wave. That is what makes "green in isolation" a true statement rather than a hopeful one — a leaf's green cannot be produced by a sibling's edits, because a sibling's edits are not in its sandbox.
+The user's checkout is untouched for the entire duration of the wave. That is what makes "green in isolation" a true statement rather than a hopeful one — a leaf's green cannot be produced by a sibling's edits, because a sibling's edits are not in its worktree.
 
 This replaces an earlier design in which the leaf edited nothing and wrote only to a staging directory. That version could not work, and the reason is worth keeping: the leaf's test imports impl at its **real** path, so a leaf writing only to staging ran its test against the unmodified file and could never observe GREEN. In practice leaves resolved the contradiction by editing the live tree and copying the result into staging afterwards — the reverse of the intended order — which cost exactly the isolation the staging rule existed to create. The instruction was prose, and prose is not a gate.
 
-`/manager-mode` Phase 6.5 gate **G5** is what enforces the footprint now. Phase 4.0 hashes **every** file before any leaf spawns; G5 then requires that every file differing from that baseline inside a leaf's sandbox appears in the leaf's declared footprint. Anything else blocks. The earlier snapshot could not do this on either axis: it excluded leaf-owned paths by construction — precisely the paths a breach touches — and it was taken in Phase 5, after every leaf had already finished.
+`/manager-mode` Phase 6.5 gate **G5** is what enforces the footprint now. Phase 4.0 records the base commit before any leaf spawns; G5 then requires that every path in `git diff --name-only <base>..<leaf commit>` appears in the leaf's declared footprint, that the commit sits exactly one step above base (a leaf that ran git shows up here), and that the worktree holds no uncommitted change outside `footprint_ignore`. Anything else blocks. Drift in the user's own checkout is advisory — admission never writes there. The design before this one hashed every file into a snapshot and blocked on live-tree drift too; every real cascade ended up hand-writing a waiver for that half, which is why it is advisory now. The design before *that* excluded leaf-owned paths from the snapshot — precisely the paths a breach touches — and took it after every leaf had already finished.
 
 ---
 

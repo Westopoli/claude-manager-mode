@@ -77,8 +77,8 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
                             per-leaf failing tests (Spec Link Rule, ≤16 leaves)
                 Phase 3    audit briefs (check_invariants.py + external
                             test-quality audit — block on FAIL)
-                Phase 4    wave baseline; one sandbox per leaf; spawn N in parallel
-                Phase 5    wait green; harvest sandboxes; assumption-sweep
+                Phase 4    wave base commit; one git worktree per leaf; spawn N in parallel
+                Phase 5    wait green; commit each leaf worktree; assumption-sweep
                 Phase 6    admission loop: G1–G10 + umbrella pre/post per leaf
                             (admit or revert from file backup)
                 Phase 7    final report: counts + follow-ups + apex test
@@ -131,9 +131,9 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 2. **Lite-discovery (Phase 1).** Fires only for missing inputs. One-question drafts per artifact — spec, type contract, failing umbrella test. The spec carries a Bible Compliance footer (cites your source-of-truth doc + lists deliberate divergences). No `.UNSTATED.md` ceremony.
 3. **Decompose (Phase 2).** Reads spec + contract, emits one brief per sub-agent at `<briefs_dir>/leaf-NN.md`. A separate shard-test-writer — never the overlord — authors the failing test for each brief; leaves only write impl. Refuses to emit more than 16 leaves in one wave. Every test file begins with a `# spec: <path>::<section>::AC-<N>` header (Spec Link Rule).
 4. **Audit (Phase 3).** Runs `check_invariants.py`. Any FAIL → fix the brief and re-run. No spawn until PASS.
-5. **Spawn (Phase 4).** Hash every file as the wave baseline, then give each leaf its own sandbox — a private copy of the project — and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`). Each leaf edits its impl files in place inside its sandbox and confirms RED→GREEN for real. Because the real tree is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
-6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green, then harvest each leaf's declared files out of its sandbox into staging. Run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
-7. **Admission loop (Phase 6).** Per leaf: G1–G10 gates → file-match → umbrella pre/post → admit-or-revert. G5 compares the leaf's sandbox against the wave baseline, so any write outside its declared footprint blocks. Backup-based revert (no git). Append-only `post-review-log.md` plus a per-leaf `GATES.md` — the log records an admission, the evidence file records that the gates actually ran.
+5. **Spawn (Phase 4).** Commit the Phase 1–3 artifacts as the wave base (with your OK), then give each leaf its own git worktree on `swarm/<slug>/leaf-NN` and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`). Each leaf edits its impl files in place inside its worktree — never running git — and confirms RED→GREEN for real. Because your checkout is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
+6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green, then commit each leaf's declared files from its worktree onto its branch (`worktree_ops.py commit` refuses on any undeclared write or any sign the leaf ran git). Run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
+7. **Admission loop (Phase 6).** Per leaf: G1–G10 gates → file-match → umbrella pre/post → admit-or-revert. G5 diffs the leaf's commit against the wave base, so any write outside its declared footprint blocks. Admission is a `--no-ff` merge into `swarm/<slug>/integration`; revert is a `reset --hard` there, with the leaf's commit kept on a `reverted/` branch for forensics. Your own branch is written only by the confirmed base commit and the confirmed final fast-forward. Append-only `post-review-log.md` (now with leaf/merge shas) plus a per-leaf `GATES.md` — the log records an admission, the evidence file records that the gates actually ran.
 8. **Report + evidence audit (Phases 7–8).** Counts of admitted/reverted/escalated and apex status, followed by parallel evidence audits in deterministic ≤3-leaf batches. The overlord records accepted/denied findings and verifies any confirmed in-footprint repair with affected tests and the configured full suite.
 
 ## Coordination model
@@ -146,7 +146,7 @@ The cascade is a tree: parent at root, leaves at fringe, no edges between leaves
 | **Question ledger** | Leaf publishes `.swarm/<cascade>/questions/leaf-NN-Q<n>.md` instead of inferring silently. Parent answers asynchronously in `.swarm/<cascade>/answers/`. | `/manager-mode` Phase 6.5 **G3** gate enforces resolution |
 | **Contract proposals** | Leaf publishes `.swarm/<cascade>/proposals/leaf-NN.md` instead of editing parent-owned files. Parent applies + accepts. | `/manager-mode` Phase 6.5 **G4** gate verifies application |
 
-What's intentionally **not** built: direct leaf-to-leaf messaging, shared mutable state, synchronous waits, cross-leaf impl reads from another leaf's sandbox or staging dir. Each would re-introduce a failure mode the cascade exists to prevent.
+What's intentionally **not** built: direct leaf-to-leaf messaging, shared mutable state, synchronous waits, cross-leaf impl reads from another leaf's worktree or branch. Each would re-introduce a failure mode the cascade exists to prevent.
 
 ## Gate reference
 
@@ -166,7 +166,7 @@ Every safety net is a numbered gate. Each runs at a specific point in the workfl
 | `G2` ASSUMPTIONS | Inferences are logged, not buried. | Phase 6.5 |
 | `G3` open-question | Every published question has an answer or `unanswered: true` ack. | Phase 6.5 |
 | `G4` contract-proposal | No `pending` proposals; `accepted` proposals are actually applied. | Phase 6.5 |
-| `G5` wave-snapshot integrity | No file outside the leaf's footprint changed since wave start. | Phase 6.5 |
+| `G5` footprint integrity | The leaf's commit changes only declared paths, and the leaf never ran git. | Phase 6.5 |
 | `G6` escalation-trigger | Any brief-declared `detect:` command that matches requires a filed escalation. | Phase 6.5 |
 | `G7` wave-sweep | Aggregate assumption-sweep ran before first admission of wave. | Phase 6.1 |
 | `apex-test` | Behavioral integration test passes after all leaves are admitted. | Phase 7.1 |

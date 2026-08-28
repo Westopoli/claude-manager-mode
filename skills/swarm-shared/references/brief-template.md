@@ -145,22 +145,23 @@ mechanically as a backstop; this assertion is the first line of defense.
 
 ## Acceptance
 
-You are working inside your own sandbox — a private copy of the project at
-`.swarm/<cascade-slug>/sandbox/leaf-NN/`, which is your working directory.
-Nothing you do there is visible to a sibling leaf or to the real project.
+You are working inside your own git worktree — a private checkout at
+`.swarm/<cascade-slug>/worktrees/leaf-NN/`, which is your working directory
+and which the parent manages. Never run git. Nothing you do there is visible
+to a sibling leaf or to the user's checkout.
 
 Run `<test command>` for this test_file. Confirm RED. Edit `impl_file` in
-place, at its normal path inside the sandbox. Confirm GREEN. Stop.
+place, at its normal path inside the worktree. Confirm GREEN. Stop.
 
-Do not stage, copy, or move anything. `/manager-mode` Phase 5 harvests your
-declared files out of the sandbox, and Phase 6 copies them to their real
-destinations only after every gate passes.
+Do not stage, copy, commit, or move anything. `/manager-mode` Phase 5 commits
+your declared files from the worktree onto your branch, and Phase 6 merges
+that commit into the integration branch only after every gate passes.
 
 Earlier versions of this template asked the leaf to confirm GREEN *and* write
 only to a staging directory. Those two instructions could not both be
 satisfied: the test imports impl at its real path, so a leaf that never wrote
 there was running its test against the unmodified file and could not reach
-GREEN. The sandbox removes the conflict rather than picking a side — inside
+GREEN. The worktree removes the conflict rather than picking a side — inside
 it, the real path IS yours.
 
 ## Escalation triggers

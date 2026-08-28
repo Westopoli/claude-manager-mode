@@ -17,6 +17,15 @@ parent_owned = [
   "tests/integration/**",
 ]
 
+# Worktree isolation (Phase 4.1). Untracked dependency trees symlinked into
+# every leaf worktree; untracked files copied in; paths G5 disregards.
+worktree_link    = ["node_modules", ".venv", "venv", "vendor", "target"]
+worktree_copy    = []
+footprint_ignore = [
+  ".git/**", ".swarm/**", "__pycache__/**", "node_modules/**", ".venv/**", "*.pyc",
+  ".pytest_cache/**", ".mypy_cache/**", ".ruff_cache/**", ".coverage", "htmlcov/**", "*.egg-info/**",
+]
+
 [invariants]
 max_impl_lines      = 1000 # ceiling on a leaf Phase 2.2 already judged coherent,
                             # not a sizing input — raise toward 1500 as needed,
