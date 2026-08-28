@@ -1,4 +1,0 @@
-interface:
-  display_name: "Manager Mode Lite"
-  short_description: "Parallel-agent TDD cascade (Sonnet 4.6 everywhere)"
-  default_prompt: "Use $manager-mode-lite to run a Sonnet-4.6-only parallel-agent TDD cascade for this feature."
