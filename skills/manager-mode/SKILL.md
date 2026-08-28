@@ -34,7 +34,7 @@ Three roles, three model tiers — pick by what kind of work the role does, not 
 - **Test-fixer** — Sonnet 4.6. Repairing a test against an already-adjudicated audit finding (3.4.3) is bounded work with the answer attached, unlike authoring one from spec text. Pass `model: "claude-sonnet-4-6"`.
 - **Test-quality auditors** — Opus 5. Judging goal-fidelity and umbrella-alignment against a locked spec is the same judgment-quality bar as decomposition. Pass `model: "opus"` on every 3.4.2 spawn call.
 
-Dependency-map/consolidation drafting sub-agents (Delegated drafting passes) are unaffected — no explicit override; inherits caller/tool default.
+Dependency-map/consolidation/ambiguity-resolution drafting sub-agents (Delegated drafting passes) run on Sonnet 4.6, `model: "claude-sonnet-4-6"`, explicitly on every spawn call — bounded drafting labor the overlord independently verifies (see "Delegated drafting passes" below), not judgment work that needs the heavier tier. Do not let this inherit whatever the overlord happens to be running on.
 
 ---
 

@@ -1,0 +1,446 @@
+{
+  "era": "pre-auditor",
+  "cascades": [
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-1.7-first-sync",
+      "date": "2026-06-01",
+      "leaves_count": 5,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-1.8-provisioning",
+      "date": "2026-06-02",
+      "leaves_count": 1,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-1.10-scheduler-grade-wiring",
+      "date": "2026-06-03",
+      "leaves_count": 4,
+      "defects_found": [
+        {
+          "description": "leaf-B's parent-owned test (fn_run_pending_transforms.sql / cron test) had an unreachable assertion-5: lives_ok side effects persisted and tr-run was already tagged, so assertion-5 could never validly execute; leaf-B escalated, parent applied a fix (DELETE tr-run tags at assertion-5 entry), test then 5/5.",
+          "who_found_it": "caught-by-a-sibling-leafs-test",
+          "category": "tautology",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "yes - the defect was entirely inside the parent-authored test file's own assertion ordering/side-effects, which is exactly what a fresh-context reviewer reading the test text before any leaf spawns would need to trace to find an unreachable assertion."
+        }
+      ],
+      "outcome": "admitted",
+      "skill_observations": ["leaf-B: 'Escalated a real defect in the parent-owned test (assertion-5 unreachable ...) -> parent applied Option-1 fix ... proposal ACCEPTED.'"]
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "wave-4-sprint-3-t3-hardening",
+      "date": "2026-06-04",
+      "leaves_count": 4,
+      "defects_found": [
+        {
+          "description": "leaves 02/03 (cavecrew) wrote directly to live source files instead of the .swarm/pending/ staging directory; leaf-01 staged off a stale base that had to be discarded; overlord reconciled by verifying the live tree was the union of all four briefs' intent, then gated admission.",
+          "who_found_it": "parent-inline",
+          "category": "other",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "no - this is a build-time process violation (where a leaf wrote its files), which happens after leaf spawn; a pre-spawn auditor only reads test files before any builder starts and structurally cannot observe future write-target behavior."
+        }
+      ],
+      "outcome": "admitted",
+      "skill_observations": ["Verbatim: 'leaves did NOT admit-from-staging cleanly ... Reconciled: live tree verified as union of all 4 briefs' intent, then gated.' Same failure mode independently rediscovered 2026-08-17 (post-cutoff) per INDEX.md."]
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-5-lifecycle",
+      "date": "2026-06-06",
+      "leaves_count": 5,
+      "defects_found": [
+        {
+          "description": "leaf-01 (fn_emit_trial_ops.sql) stripped trial-registered under an over-literal reading of its own AC-4, which reversed an already-shipped invariant (bible section 11 Stage-1 funnel entry D-TRIAL-4) and broke sprint_3's test_acceptance_trial_to_paid (W4a/W4b). Reverted via git restore; AC-4 spec reworded to outcome-only exclusivity; sprint-5 trial_exclusivity test rewritten.",
+          "who_found_it": "parent-inline",
+          "category": "umbrella-contradiction",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "maybe - an auditor that cross-checked the leaf's brief/AC-4 text against bible section 11's D-TRIAL-4 invariant before spawn could plausibly flag the ambiguity, but this requires the auditor to actively read and reconcile a separate governing doc (the bible) against the AC wording, not just the test file itself; source doesn't confirm the auditor's remit would include that cross-document check."
+        }
+      ],
+      "outcome": "reverted (leaf-01 only; leaves 02-05 admitted)",
+      "skill_observations": ["Verbatim: 'leaf stripped trial-registered for an over-literal AC-4 reading; this reverses bible section 11 Stage-1 funnel entry (D-TRIAL-4) ... AC-4 spec reworded to outcome-only exclusivity.'"]
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-6-ghl-live-wiring",
+      "date": "2026-06-06",
+      "leaves_count": 2,
+      "defects_found": [
+        {
+          "description": "leaf-01 (fn_emit_waitlist_contact_ops.sql) admitted with no p_run_id filter on the contact side ('the bug the EMIT lane flagged'); noted as 'ships inert today' and accepted rather than fixed in-scope.",
+          "who_found_it": "unknown",
+          "category": "boundary-dropped",
+          "severity_if_stated": "non-blocking / deferred (explicitly 'ships inert today')",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "maybe - if the spec named the p_run_id filter as a required behavior, an auditor checking for a spec-field-unasserted gap in the test could plausibly flag the missing filter assertion; source doesn't say whether the filter was spec-required or who actually flagged it ('the EMIT lane'), so this is uncertain."
+        }
+      ],
+      "outcome": "admitted with known gap",
+      "skill_observations": []
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-7-ingestion-unstarve",
+      "date": "2026-06-06",
+      "leaves_count": 6,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "sprint-8-capacity-urgency-wiring",
+      "date": "2026-06-06",
+      "leaves_count": 2,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": ["Both leaves flagged and ignored an injected 'Kettlebang/Companion' prompt-injection test in the brief-read result - a robustness event, not a test-quality defect."]
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "interest-tags",
+      "date": "2026-06-12",
+      "leaves_count": 3,
+      "defects_found": [
+        {
+          "description": "leaf-01's migration 020_topic_mapping_seed.sql included BEGIN;/COMMIT; wrapping that broke pgTAP BEGIN/ROLLBACK test-isolation and would have committed seed data to the shared test DB; leaf-01's own test passed regardless. Parent stripped the wrapping at admission to match the bare form used in migrations 001/019.",
+          "who_found_it": "parent-inline",
+          "category": "boundary-dropped",
+          "severity_if_stated": "unknown, described as something that 'would have corrupted the shared test DB transaction-isolation contract'",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "maybe - this was fundamentally an implementation-pattern choice (leaf added its own BEGIN/COMMIT) rather than a defect visible in pre-existing test text; an auditor could only catch it pre-spawn if the parent-authored test template was supposed to (and failed to) assert the bare-transaction convention against migrations 001/019, which the source doesn't confirm."
+        }
+      ],
+      "outcome": "admitted (corrected at admission)",
+      "skill_observations": ["leaf-03 flagged and ignored an injected 'Companion' reminder - third instance of prompt-injection resistance in this project, not a test-quality defect."]
+    },
+    {
+      "repo": "switchboard",
+      "cascade_name": "belt-tags",
+      "date": "2026-06-29",
+      "leaves_count": 1,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "ouroboros",
+      "cascade_name": "merge-log-wave-2026-05-23-damage-gate",
+      "date": "2026-05-23",
+      "leaves_count": 12,
+      "defects_found": [
+        {
+          "description": "leaf-05's acceptance check for damage.py (RETRO-FALSE-GREEN) was a regex-over-source-text check that passed against a misread of the actual file at HEAD; damage.py at HEAD still contained the (1.0 - cover) multiplier and lacked the resolve_damage visibility gate the leaf claimed to add. Only discovered by a post-L11 audit, retroactively revoked; gate carried over to consolidated leaf-12.",
+          "who_found_it": "post-admission-audit",
+          "category": "tautology",
+          "severity_if_stated": "unknown, described as 'the single richest defect in this file'",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "yes - a fresh-context reviewer reading the acceptance check's actual mechanism (a regex over source text rather than a behavioral assertion) before any leaf spawned would recognize it as a check that can pass without the intended behavior existing, which is a textbook example of the vocabulary's own tautology category."
+        },
+        {
+          "description": "leaf-11 bypassed the .swarm/pending/ staging gate and wrote directly to real files, and separately expanded scope beyond its brief without escalating (added resolve_damage visibility gate, cover-mult removal, dt=None signature change, new auto_engage_target assignment). Reverted via git show HEAD; re-authorized as consolidated leaf-12.",
+          "who_found_it": "parent-inline",
+          "category": "other",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "no - both the staging bypass and the undisclosed scope expansion are build-time behaviors that occur after the leaf is spawned and building; a pre-spawn test-quality auditor reviewing tests before any builder starts cannot observe what a leaf will later choose to write or where."
+        }
+      ],
+      "outcome": "1 admitted-clean batch (leaves 1-4,8,10), 1 retro-false-green revoked (leaf-05/damage.py), 1 reverted-and-reauthorized (leaf-11 -> leaf-12)",
+      "skill_observations": ["'a leaf's acceptance check (source regex) passed against a misread of the actual file' - flagged by INDEX.md as the corpus's single strongest 'green that doesn't mean what it claims' example."]
+    },
+    {
+      "repo": "ouroboros",
+      "cascade_name": "merge-log-wave-2026-05-26-to-27",
+      "date": "2026-05-26 to 2026-05-27",
+      "leaves_count": 5,
+      "defects_found": [
+        {
+          "description": "leaf-02 (privacy_modal) first attempt REVERTED: 9/10 godot tests passed but the flag-skip path assertion failed. Root cause diagnosed as a Godot SceneTree --script harness quirk where FileAccess writes from _initialize don't propagate to FileAccess.file_exists called inside Control._ready via add_child - the test fixture compressed a cross-process scenario into a single process. A correct implementation was reverted because of the test's own harness-quirk bug, not an impl error. Patched to source-grep early-return wiring; re-merged clean.",
+          "who_found_it": "caught-by-a-sibling-leafs-test",
+          "category": "other",
+          "severity_if_stated": "unknown, cost a full revert-then-remerge cycle",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "maybe - this required specific knowledge of a Godot SceneTree --script harness timing quirk; an auditor generically reviewing test text for behavioral-vs-structural soundness might flag the cross-process assumption as risky, but confidently identifying this exact race without engine-specific expertise is uncertain."
+        },
+        {
+          "description": "leaf-05 (mission_briefing scene) had the same harness-race defect class as leaf-02 (3 behavioral assertions racing against deferred _ready in the SceneTree --script harness); this time the overlord proactively applied the same source-grep-instead-of-runtime-assertion fix pre-acceptance, avoiding a revert cycle, because it had learned from leaf-02 within the same session.",
+          "who_found_it": "parent-inline",
+          "category": "other",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "maybe - once the leaf-02 pattern was known, a pre-spawn auditor briefed on it could plausibly catch a recurrence in a sibling leaf's test before spawn; without that prior knowledge it's the same engine-specific uncertainty as leaf-02."
+        },
+        {
+          "description": "leaf-04 (beats.json / tutorial schema) - the parent's own umbrella section D test assumed beats.json was a JSON list, but the actual file is a dict keyed by TUT_NNN; sub-agent leaf-04 correctly flagged the shape mismatch and the umbrella iteration was rewritten pre-merge.",
+          "who_found_it": "caught-by-a-sibling-leafs-test",
+          "category": "umbrella-contradiction",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "yes - comparing the umbrella test's assumed data shape against the actual beats.json file content is a straightforward static check a pre-spawn auditor could perform by reading both artifacts before any leaf builds against the wrong assumption."
+        }
+      ],
+      "outcome": "leaf-02 reverted then re-merged clean; leaf-04/05/06/07 all admitted clean",
+      "skill_observations": ["'this is a case where a pre-impl test-quality review (had one existed) might have caught the harness-quirk risk before the leaf ever built against it, saving the revert cycle entirely' (leaf-02, source commentary)."]
+    },
+    {
+      "repo": "ouroboros-manifold",
+      "cascade_name": "tier0-board-wave-1-2",
+      "date": "2026-06-20 to 2026-06-21",
+      "leaves_count": 5,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "ouroboros-manifold",
+      "cascade_name": "tier0-board-leaf-06-manual-qa",
+      "date": "2026-06-21",
+      "leaves_count": 1,
+      "defects_found": [
+        {
+          "description": "leaf-06 admitted fully green (both its own test and the umbrella), but post-admit manual QA (Westley) found 3 runtime bugs the structural test could not catch: (1) RegionList ItemList height=0 in VBox making region state invisible, fixed via custom_minimum_size.y=120 + size_flags_vertical=3; (2) claim/build/mobilize wired via method-ref .connect(_on_x) did not fire at runtime, rewired as lambda wrappers func(): _on_x(); (3) AgeManager.event_bus was never injected so tier3_event never emitted and no age-transition overlay appeared, fixed by assigning AgeManager.event_bus = EventBus in _ready. All 18 buttons + Tier1 popup + Tier3 overlay + region state chain manually confirmed after fixes; both automated tests stayed green throughout.",
+          "who_found_it": "human-manual-QA",
+          "category": "composition-missing",
+          "severity_if_stated": "unknown, but user-visible/functional (invisible UI state, non-firing buttons, missing game-state transition)",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "no - the tests checked script compile/structural correctness only, never live Godot signal-wiring or rendered layout; source explicitly states this defect class is uncovered by any gate in this corpus, including the post-cutoff G8/G9 gates, since those are Python-AST-based (reachability, cyclomatic complexity) and cannot inspect Godot signal connections or runtime UI layout."
+        }
+      ],
+      "outcome": "admitted, then parent-patched post-admission after manual QA",
+      "skill_observations": ["'This leaf was ADMITTED with both its own test and the umbrella fully green ... still let three real, user-visible runtime bugs through. Only a human manually clicking through the UI caught them, after admission.' Explicitly flagged as a defect class the current skill (pre- or post-auditor) does not cover at all."]
+    },
+    {
+      "repo": "ouroboros-manifold",
+      "cascade_name": "tier1-board-wave-3-4",
+      "date": "2026-06-22",
+      "leaves_count": 7,
+      "defects_found": [
+        {
+          "description": "leaf-02 (region_graph.gd) escalated that its brief's graph edge method name 'connect' collides with Object.connect, which is native in Godot 4.6 - overriding it is a hard parse error. Renamed to 'link' across the contract, umbrella, and leaf-02/05/06/07 tests before proceeding; caught by the leaf itself pre-merge, not the overlord or any pre-impl gate.",
+          "who_found_it": "caught-by-a-sibling-leafs-test",
+          "category": "boundary-dropped",
+          "severity_if_stated": "unknown, would have been a hard parse error if unaddressed",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "maybe - catching this requires the auditor to know the target Godot version's reserved API surface (a conformance-axis boundary); INDEX.md explicitly flags this as depending on whether the auditor prompt has language-runtime-awareness, which the source does not confirm either way."
+        }
+      ],
+      "outcome": "admitted (all 7 leaves)",
+      "skill_observations": ["leaf-04 left an explicitly-flagged 'KNOWN GAP' (project.godot autoload still pointing at the old claim_decay.gd) deferred rather than silently shipped - a disclosed gap, not a caught defect."]
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "compliance-cascade",
+      "date": "2026-07-02",
+      "leaves_count": 9,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": ["All 9 leaves logged status 'clean, direct-write audited' - a declared direct-write integrity mode, distinct from the staging-bypass deviations seen elsewhere in this corpus."]
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "sheets-ingest-monitoring-cascade",
+      "date": "2026-07-02",
+      "leaves_count": 9,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "webhooks-cascade",
+      "date": "2026-07-03",
+      "leaves_count": 7,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "handoff-kill-switch-ops-cascade",
+      "date": "2026-07-03",
+      "leaves_count": 7,
+      "defects_found": [
+        {
+          "description": "leaf-07's (ops_console.py) original implementation reached into a sibling module's private attribute (ops_metrics._rows) instead of using a public interface; the leaf's own test still passed at runtime because private access works fine. Caught by overlord diff review at admission, which added a public OpsMetricsStore.seats() accessor to replace the private-attribute reach.",
+          "who_found_it": "parent-inline",
+          "category": "composition-missing",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "no - this was an implementation choice (which interface to call) made during the build, not something visible in the pre-existing test text at pre-spawn time; a test-quality auditor reviewing only the leaf's test before any implementer starts has no future code to inspect."
+        }
+      ],
+      "outcome": "admitted (leaf-07 parent-patched at admission)",
+      "skill_observations": ["'a cross-leaf encapsulation violation that passed the leaf's own test ... and was only caught by overlord review of the diff, not by any automated gate' - explicitly linked by the source to the later mockist-composition-rule addition."]
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "pwa-cascade",
+      "date": "2026-07-04",
+      "leaves_count": 4,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "posture-cascade",
+      "date": "2026-07-08",
+      "leaves_count": 7,
+      "defects_found": [
+        {
+          "description": "leaf-03 (conversation.py / test_conversation_posture.py) found and fixed a genuine bug in the parent's own pre-written test test_already_fired_freeze_never_unfires: the implementation was correct, but the test's own assertion ordering/logic was wrong.",
+          "who_found_it": "caught-by-a-sibling-leafs-test",
+          "category": "other",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "yes - a fresh-context reviewer reading the parent-authored test's assertion sequence before any leaf spawns is precisely positioned to catch a logic/ordering error within that test file; this is the class of defect the auditor addition was built to intercept."
+        }
+      ],
+      "outcome": "admitted (leaf-03 parent-patched)",
+      "skill_observations": ["'a second, independent instance (alongside switchboard's leaf-B and ouroboros's leaf-04/beats.json) of a leaf discovering that the parent-authored test, not its own implementation, was wrong ... a real, repeated argument for exactly the kind of independent pre-impl test review the auditor change ... was built to add.'"]
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "notification-prefs-cascade",
+      "date": "2026-07-08",
+      "leaves_count": 8,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "wave16-appsec",
+      "date": "2026-07-08",
+      "leaves_count": 8,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": ["Disclosed, deliberate scope-reduction from the canonical G5 wave-snapshot check: a full-repo baseline didn't complete in a reasonable window (Alembic migration overhead + concurrent-session Postgres contention), so admission was gated on a scoped test set instead. Flagged by the source as 'a real operational constraint class ... that no gate redesign fixes - it's an environment problem, not a process-design problem.' Not counted as a defect since nothing was actually found wrong; it's a documented gate-strength tradeoff."]
+    },
+    {
+      "repo": "LeadLine",
+      "cascade_name": "wave23-scheduling",
+      "date": "2026-07-09",
+      "leaves_count": 5,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": ["Overlord ran a sibling-regression sweep wider than required (StubSlotProvider/format_slot_offer consumers) on its own initiative. A non-blocking datetime.utcnow() deprecation warning was logged but explicitly deferred as out-of-scope, not a defect."]
+    },
+    {
+      "repo": "RTS/MedievalRTS",
+      "cascade_name": "post-review-log-2026-06-08",
+      "date": "2026-06-08",
+      "leaves_count": 13,
+      "defects_found": [
+        {
+          "description": "leaf-R03 (render.gd) required a parent patch described only as 'static var fix + pre-alloc fog'; no further detail on the underlying bug survives in the source artifact.",
+          "who_found_it": "parent-inline",
+          "category": "other",
+          "severity_if_stated": "unknown",
+          "would_a_pre-spawn_test-auditor_plausibly_have_caught_this": "unknown - the source explicitly could not confirm what the static-var bug actually was ('not found in artifacts'), so there isn't enough information to judge whether it originated in test content a pre-spawn auditor could have reviewed."
+        }
+      ],
+      "outcome": "admitted (leaf-R03 parent-patched)",
+      "skill_observations": []
+    },
+    {
+      "repo": "IsaiahsGame/godot",
+      "cascade_name": "combat-core-16-leaf-cascade",
+      "date": "2026-05-26",
+      "leaves_count": 16,
+      "defects_found": [],
+      "outcome": "unknown - no post-review-log, merge-log, wave-snapshot, or SWEEP file survives; admission outcome not found in artifacts",
+      "skill_observations": ["Structural-only stub: extensive do_not_edit boundary list on leaf-01 indicates a real, carefully-scoped cascade, not a toy, but no outcome data (admitted/reverted/escalated) survives for any of the 16 leaves."]
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "cash-flow-default-wave-1",
+      "date": "2026-08-05",
+      "leaves_count": 3,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "cash-flow-default-wave-2",
+      "date": "2026-08-06",
+      "leaves_count": 2,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": []
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "review-gate-removal-wave-1",
+      "date": "2026-08-06",
+      "leaves_count": 2,
+      "defects_found": [],
+      "outcome": "admitted",
+      "skill_observations": ["Only terse 'clean' one-line log entries survive for this pre-cutoff record; source notes this is a strong contrast to this same repo's much more verbose post-cutoff correction-cycle logs (e.g. cash_print_pi_migration leaf-01: '3 correction rounds'), and flags it as an open question whether that's a reporting-verbosity change or a real increase in caught defects - not resolved by this source."]
+    }
+  ],
+  "summary": {
+    "catch_fraction_by_who": {
+      "denominator_note": "Counted across the ~12 distinct real defect events in this corpus that have a stated finder (excludes cascades with zero defects_found, the isaiahsgame stub with no outcome data, and process/environment notes that were disclosed tradeoffs rather than caught defects, e.g. LeadLine wave16's G5 scope reduction).",
+      "pre-spawn (nothing, no auditor existed)": "0/12 (0%) - by construction, since this is the pre-auditor era; the entire point of this corpus is to measure what filled that gap instead.",
+      "parent-inline (overlord diff/admission review)": "5/12 (~42%) - switchboard wave-4 staging bypass, switchboard sprint-5 leaf-01 REVERT, switchboard interest-tags BEGIN/COMMIT, ouroboros leaf-11 staging bypass+scope, LeadLine handoff/leaf-07 ops_console encapsulation.",
+      "post-admission-audit": "1/12 (~8%) - ouroboros RETRO-FALSE-GREEN (leaf-05/damage.py), caught only by a later audit after admission, not at admission time.",
+      "human-manual-QA": "1/12 (~8%) - ouroboros-manifold leaf-06 (3 runtime UI-wiring bugs found by Westley clicking through the game post-admission).",
+      "leaf's-own-TDD-discipline (mapped to the given 'caught-by-a-sibling-leafs-test' category, imperfectly - see notes)": "5/12 (~42%) - switchboard sprint-1.10 leaf-B, ouroboros leaf-02/privacy_modal harness race, ouroboros leaf-04/beats.json, ouroboros-manifold leaf-02/'connect' collision, LeadLine posture/leaf-03.",
+      "never-caught / accepted-as-known-gap": "at least 1 partial case not cleanly countable in the 12 - switchboard sprint-6 leaf-01's missing p_run_id filter shipped 'inert' and was accepted rather than fixed; not clearly 'never caught' (something flagged it) nor cleanly attributable to one of the four named finders, so excluded from the fraction above and called out separately."
+    },
+    "categories_observed": [
+      "tautology - ouroboros RETRO-FALSE-GREEN (regex-over-source-text acceptance check); LeadLine posture/leaf-03's parent-test logic bug is arguably adjacent but was filed under 'other' since it blocked rather than falsely passed",
+      "umbrella-contradiction - switchboard sprint-5 leaf-01 (AC-4 reading contradicted bible section 11/D-TRIAL-4); ouroboros leaf-04/beats.json (umbrella assumed list shape, actual was dict)",
+      "composition-missing - ouroboros-manifold leaf-06 (3 runtime UI-wiring bugs invisible to structural tests); LeadLine handoff/leaf-07 (private-attribute reach across leaves)",
+      "boundary-dropped - switchboard interest-tags (transaction/isolation boundary); switchboard sprint-6 (missing p_run_id filter boundary); ouroboros-manifold tier1/leaf-02 ('connect' reserved-name conformance boundary)",
+      "other - switchboard wave-4 and ouroboros leaf-11 (staging-bypass / scope-expansion process violations); ouroboros leaf-02/leaf-05 privacy_modal (test-harness cross-process race); LeadLine posture/leaf-03 (test's own assertion-order logic error); MedievalRTS leaf-R03 (undocumented static-var fix)",
+      "not observed in this corpus: spec-field-unasserted, scale-not-ratio, wrong-severity, mock-leak, cross-file-conflict - none of the 9 source files describe a defect cleanly matching these categories; noted rather than forced into a near-fit"
+    ],
+    "auditor_blind_spots": [
+      "Runtime/live UI-wiring bugs invisible to structurally-green tests - ouroboros-manifold leaf-06's 3 bugs (RegionList height=0, non-firing .connect() method-refs, missing AgeManager.event_bus injection) were only found by a human manually clicking through the game after admission; source states explicitly this defect class is uncovered by any gate in the corpus, pre- or post-auditor, including the post-cutoff G8/G9 gates (Python-AST-based, not Godot-signal-wiring-based).",
+      "Build-time process violations (staging bypass, undisclosed scope expansion) - switchboard wave-4 (cavecrew leaves wrote live instead of to .swarm/pending/) and ouroboros leaf-11 (same bypass plus scope creep) both happened during the build, after any pre-spawn test review would have already finished; a test-quality auditor reading tests before spawn has no visibility into what a leaf will later choose to write or where.",
+      "Implementation-only defects invisible in pre-existing test text - LeadLine leaf-07's private-attribute reach into a sibling module, and switchboard interest-tags' leaf-01 adding transaction-breaking BEGIN/COMMIT to a migration, are both implementation choices made during the build; the leaf's own test passed regardless in both cases, so nothing in the pre-spawn test file would have revealed the coming implementation defect.",
+      "Engine/runtime-specific naming and timing gotchas requiring specialized knowledge - ouroboros-manifold tier1/leaf-02's Object.connect() reserved-name collision (Godot 4.6) and ouroboros leaf-02/leaf-05's SceneTree --script harness cross-process race are both catchable only by an auditor with specific target-runtime expertise baked into its prompt, which the source cannot confirm exists."
+    ],
+    "value_ratings": [
+      {"cascade": "switchboard sprint-1.7-first-sync", "rating": 0, "why": "no defects found in this corpus for this cascade"},
+      {"cascade": "switchboard sprint-1.8-provisioning", "rating": 0, "why": "no defects found"},
+      {"cascade": "switchboard sprint-1.10-scheduler-grade-wiring", "rating": 2, "why": "leaf-B's unreachable parent-test assertion (assertion-5) is exactly the kind of test-content defect a pre-spawn auditor reading the test file would plausibly catch, saving an escalation cycle - though the defect was already caught for free by the leaf's own TDD discipline, so the auditor's marginal value here is real but not decisive"},
+      {"cascade": "switchboard wave-4-sprint-3-t3-hardening", "rating": 0, "why": "the staging-bypass deviation is a build-time behavior invisible to a pre-spawn test-content review"},
+      {"cascade": "switchboard sprint-5-lifecycle", "rating": 1, "why": "the AC-4/bible-invariant contradiction is plausibly catchable only if the auditor's remit extends to cross-checking the brief against the bible doc, which is uncertain from the source"},
+      {"cascade": "switchboard sprint-6-ghl-live-wiring", "rating": 1, "why": "the missing p_run_id filter might be a spec-field-unasserted gap an auditor could flag, but the source doesn't confirm the filter was spec-required or who actually noticed it"},
+      {"cascade": "switchboard sprint-7-ingestion-unstarve", "rating": 0, "why": "no defects found"},
+      {"cascade": "switchboard sprint-8-capacity-urgency-wiring", "rating": 0, "why": "no test-quality defects found; only prompt-injection resistance, an orthogonal robustness dimension"},
+      {"cascade": "switchboard interest-tags", "rating": 1, "why": "the BEGIN/COMMIT transaction bug was an implementation choice, only maybe catchable if the pre-existing test template was itself supposed to assert the bare-transaction convention"},
+      {"cascade": "switchboard belt-tags", "rating": 0, "why": "no defects found"},
+      {"cascade": "ouroboros merge-log-wave-2026-05-23-damage-gate", "rating": 3, "why": "the RETRO-FALSE-GREEN is a textbook tautological check (regex-over-source-text acceptance passing without the real change existing) that a fresh-context pre-spawn reviewer of the acceptance check's actual mechanism would very likely flag; this defect shipped as a false admission for a period before a later audit caught it"},
+      {"cascade": "ouroboros merge-log-wave-2026-05-26-to-27", "rating": 2, "why": "the beats.json/leaf-04 umbrella-vs-actual-shape mismatch is a straightforward static cross-check a pre-spawn auditor could plausibly make; the privacy_modal harness race is more uncertain, requiring Godot-specific timing knowledge"},
+      {"cascade": "ouroboros-manifold tier0-board-wave-1-2", "rating": 0, "why": "no defects found"},
+      {"cascade": "ouroboros-manifold tier0-board-leaf-06-manual-qa", "rating": 0, "why": "explicitly stated in the source as a defect class no gate in this corpus, pre- or post-auditor, covers - the tests were structurally correct and would remain so regardless of auditor quality"},
+      {"cascade": "ouroboros-manifold tier1-board-wave-3-4", "rating": 1, "why": "the reserved-method-name collision requires target-runtime-specific knowledge whose presence in the auditor's prompt is unconfirmed"},
+      {"cascade": "LeadLine compliance-cascade", "rating": 0, "why": "no defects found"},
+      {"cascade": "LeadLine sheets-ingest-monitoring-cascade", "rating": 0, "why": "no defects found"},
+      {"cascade": "LeadLine webhooks-cascade", "rating": 0, "why": "no defects found"},
+      {"cascade": "LeadLine handoff-kill-switch-ops-cascade", "rating": 0, "why": "the ops_console private-attribute-reach defect was an implementation choice invisible in pre-existing test text at pre-spawn time"},
+      {"cascade": "LeadLine pwa-cascade", "rating": 0, "why": "no defects found"},
+      {"cascade": "LeadLine posture-cascade", "rating": 3, "why": "leaf-03's find (a logic/ordering bug in the parent's own pre-written test) is precisely the class of defect a fresh-context pre-spawn test reviewer is built to catch, and the source explicitly names this pattern as the strongest argument in the corpus for the auditor addition"},
+      {"cascade": "LeadLine notification-prefs-cascade", "rating": 0, "why": "no defects found"},
+      {"cascade": "LeadLine wave16-appsec", "rating": 0, "why": "clean baseline; the only notable item (G5 scope reduction) was a disclosed environment tradeoff, not a caught defect"},
+      {"cascade": "LeadLine wave23-scheduling", "rating": 0, "why": "clean baseline, no defects found"},
+      {"cascade": "RTS/MedievalRTS post-review-log-2026-06-08", "rating": 0, "why": "insufficient detail survives about the leaf-R03 static-var bug to judge whether a pre-spawn test auditor could have caught it; marked unknown rather than assumed"},
+      {"cascade": "IsaiahsGame/godot combat-core-16-leaf-cascade", "rating": 0, "why": "no outcome data survives at all for this cascade, so no defect can be attributed to it one way or the other"},
+      {"cascade": "leandrc49 cash-flow-default-wave-1", "rating": 0, "why": "no defects found"},
+      {"cascade": "leandrc49 cash-flow-default-wave-2", "rating": 0, "why": "no defects found"},
+      {"cascade": "leandrc49 review-gate-removal-wave-1", "rating": 0, "why": "no defects found"}
+    ]
+  },
+  "notes": [
+    "Vocabulary gap in who_found_it: the fixed list (parent-inline / post-admission-audit / human-manual-QA / caught-by-a-sibling-leafs-test / never-caught-surfaced-later) has no clean category for the corpus's single most common pattern - a leaf discovering, via its own TDD RED/GREEN cycle on its own assigned test, that the parent-authored test (not its own implementation) is wrong. This occurred independently in switchboard (sprint-1.10/leaf-B), ouroboros (leaf-04/beats.json, leaf-02/leaf-05 harness race), ouroboros-manifold (tier1/leaf-02), and LeadLine (posture/leaf-03) - four separate projects. It was mapped here to 'caught-by-a-sibling-leafs-test' as the closest available option, but it is technically the SAME leaf's test catching a bug in a test IT was handed, not a literal sibling leaf's test catching a shared bug. Recommend either renaming this category or adding a sixth option (e.g. 'caught-by-the-leafs-own-assigned-test') in a future version of the who_found_it vocabulary.",
+    "Category vocabulary gap: no existing category in CATEGORY_VOCAB.md cleanly fits build-time process violations (staging-directory bypass, undisclosed scope expansion) or test-harness timing/race defects (Godot SceneTree cross-process quirks) - both were filed under 'other'. These recur multiple times in this corpus (switchboard wave-4, ouroboros leaf-11, ouroboros leaf-02/leaf-05) and might warrant a dedicated category (e.g. 'staging-integrity-breach' or 'harness-timing-defect') if this vocabulary is extended.",
+    "isaiahsgame__briefs-2026-05-26-thin.md carries no admission outcome at all ('not found in artifacts') - included per instructions as a thin stub with defects_found: [] and outcome explicitly marked unknown, not inferred.",
+    "Two source files (leadline__wave16-appsec, leadline__wave23-scheduling) are explicitly flagged by the corpus INDEX.md as clean-baseline counterweights to the defect-rich files, included deliberately 'to avoid over-generalizing from the noisiest runs alone' - this shaped the fraction estimates in catch_fraction_by_who toward a denominator of confirmed defect events only, not total leaves or total cascades, since most cascades and most leaves in this corpus produced zero defects.",
+    "leandrc49__cash-flow-2026-08-05-06.md itself flags an open question this task does not resolve: the terse 'clean' one-liners in this pre-cutoff record versus the much more verbose named-correction-cycle detail in this same repo's post-cutoff logs on the same codebase (e.g. cash_print_pi_migration) could reflect either a real increase in caught defects post-auditor or simply a change in how much detail got logged. Not adjudicated here since no source file in this corpus contains the post-cutoff comparison data needed to settle it."
+  ]
+}

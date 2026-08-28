@@ -22,6 +22,8 @@ Produced by `extract_ledgers.py`. Pure extraction; every value is a quote, a cou
 
 ## Known limits
 
+- **TODO, confirmed by B3 judgment pass**: `ac_index[AC].tests` only links via the test's `# spec:` header or an audit-finding citation — a correctly-tested AC never flagged by any audit shows as `tests: []`. Deep-check found 13/18 such flags in Agora cascades were false-negatives (real test exists, just uncited). Fix: also scan every test file's body for `AC-\d+` mentions in assertion messages/docstrings/comments, not just the header, and union with header-linked tests. Not fixed this session — `SYNTHESIS.md` corrects the headline stat instead of silently trusting it.
+
 - `impls` reflect the live tree; several impl files are owned by multiple cascades across waves (Agora `scripts/next.py` ×4). Admission-time content is only recoverable from git history (`git log --follow -- <path>` in the repo) — the judgment pass must do that explicitly when it matters.
 - Legacy repos keep audits at `.swarm/audits/wave-N/<batch>/` without a slug; they are attached to a cascade when the audit text names one of its test files. Unattached audits are not in any ledger (list them with `find .swarm/audits -name '*.md'` vs ledger paths).
 - JS test assertion counts are file-level regex counts, not per test.

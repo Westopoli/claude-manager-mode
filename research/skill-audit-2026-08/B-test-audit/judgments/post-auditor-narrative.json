@@ -1,0 +1,395 @@
+{
+  "era": "post-auditor",
+  "source_files": [
+    "/Users/westley/Projects/Agora/runs/manager-mode-post-auditor/INDEX.md",
+    "/Users/westley/Projects/Agora/runs/manager-mode-post-auditor/leandrc49__cash-print-cascades-2026-08-17-19.md",
+    "/Users/westley/Projects/Agora/runs/manager-mode-post-auditor/leandrc49__shard-sizing-ab-2026-08-18-19.md",
+    "/Users/westley/Projects/Agora/runs/manager-mode-post-auditor/switchboard__slack-roster-command-2026-08-17.md",
+    "/Users/westley/Projects/Agora/runs/manager-mode-post-auditor/the-best-salesmen__stage2-3-2026-08-09.md"
+  ],
+  "cascades": [
+    {
+      "repo": "the-best-salesmen",
+      "cascade_name": "stage2-backend-api + stage3-frontend (waves 1-3 backend, wave1 frontend)",
+      "source_file": "the-best-salesmen__stage2-3-2026-08-09.md",
+      "date": "2026-08-09T00:15:00Z - 2026-08-09T01:10:00Z (backend), 2026-08-09T01:07:00Z - 01:09:00Z (frontend)",
+      "leaves_count": 11,
+      "leaves_breakdown": "backend wave1: leaf-01..05 (5, +0 deltas, no Phase-3.4 audit artifact recorded for this wave per file's own caveat: 'leaf-06 onward, and all 4 frontend leaves' carry live audit artifacts, implying wave1 predates/lacks one); backend wave2: leaf-06 (1); backend wave3: leaf-07 (1); frontend wave1: leaf-f1..f4 (4)",
+      "pre_spawn_audit_findings": [
+        {
+          "finding_id": "leaf-06-handler-body-assertion-gap",
+          "severity": "yellow",
+          "category": "spec-field-unasserted",
+          "quote_or_paraphrase": "3 handler tests (not_found_handler/rate_limit_handler/invalid_file_handler) asserted status code only, never response body, despite the brief specifying exact literal bodies for all four handlers uniformly and the project's #3 stated priority being 'no user-enumeration via error messages'. An implementation that leaked the raw exception message into the body would have passed all three tests unchanged.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes",
+          "file_or_test_it_targeted": "security.py handler tests (wave 2)"
+        },
+        {
+          "finding_id": "leaf-07-status-only-regression",
+          "severity": "red",
+          "category": "spec-field-unasserted",
+          "quote_or_paraphrase": "the exact wave-2 status-only-assertion pattern regressed onto 3 of the 5 route-level tests, despite the audit brief explicitly asking the auditor to check for this recurrence.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes",
+          "file_or_test_it_targeted": "app.py route-level tests (wave 3)"
+        },
+        {
+          "finding_id": "leaf-07-ac30-zero-coverage",
+          "severity": "red",
+          "category": "spec-field-unasserted",
+          "quote_or_paraphrase": "zero coverage anywhere of AC-30 (bare Exception -> 500, generic body) -- no comment or NOTE explaining the gap, unlike the adjacent AC-28 omission which was documented. A real wiring bug (e.g. the generic-exception handler never registered) would have shipped undetected.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes",
+          "file_or_test_it_targeted": "app.py (wave 3), AC-30"
+        },
+        {
+          "finding_id": "leaf-f4-debounce-throttle-tautology",
+          "severity": "red",
+          "category": "tautology",
+          "quote_or_paraphrase": "the AC-11/AC-12 debounce+throttle test could not actually distinguish a throttled implementation from a debounce-only one -- 5 edits spaced 500ms apart all landed inside one 2s debounce window, producing exactly one debounce completion, so the assertions were satisfiable by an implementation with zero throttle logic at all.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes",
+          "file_or_test_it_targeted": "EntryForm test (frontend leaf-f4)"
+        },
+        {
+          "finding_id": "leaf-f4-ac15-hardcoded-key",
+          "severity": "yellow",
+          "category": "other",
+          "quote_or_paraphrase": "an AC-15 test hardcoded an implementation-specific localStorage key ('entryForm:new') not mandated by spec/brief, inconsistent with its own sibling AC-14 test's key-agnostic approach.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "unclear -- described as a brittleness/consistency fix, not a defect that would have caused a wrong-implementation false-pass",
+          "file_or_test_it_targeted": "EntryForm test, AC-15 (frontend leaf-f4)"
+        }
+      ],
+      "defects_that_slipped_past_the_auditor_anyway": [
+        {
+          "description": "leaf-f4 hit a genuine Vitest/RTL fake-timer + waitFor deadlock at implementation time and worked around it with a globalThis.jest shim placed INSIDE the production component (guarded by process.env.VITEST). Judged unacceptable by the overlord and removed before admission.",
+          "category": "other",
+          "how_caught": "overlord's ordinary admission-time diff review, not Phase 3.4 -- explicitly stated as 'a defect class Phase 3.4 does not cover at all -- it's an implementation-time leak into shipped code, not a pre-impl test-quality gap'",
+          "citation": "the-best-salesmen file, leaf-f4 section"
+        },
+        {
+          "description": "leaf-f1 independently escalated a real shared-harness bug: RTL auto-cleanup not registered (test.globals unset, no explicit cleanup() call).",
+          "category": "other",
+          "how_caught": "discovered by the leaf itself during implementation, not by the pre-spawn audit; fixed by overlord directly in parent-owned vitest.setup.ts",
+          "citation": "the-best-salesmen file, leaf-f1 note"
+        },
+        {
+          "description": "leaf-f2 reported a suspected localStorage harness bug; real cause was a mockReturnValue reusing one Response object across multiple fetch calls (single-read body stream collision, flaky race).",
+          "category": "other",
+          "how_caught": "discovered during implementation and diagnosed by the overlord, not flagged by the pre-spawn audit",
+          "citation": "the-best-salesmen file, leaf-f2 note"
+        }
+      ],
+      "outcome": {
+        "status": "admitted",
+        "detail": "Stage 2 (Backend API) complete: 7/7 leaves admitted across 3 waves, 40/40 tests passing. Stage 3 frontend wave 1 (leaf-f1..f4) complete: 22/22 tests passing (18 leaf + 4 umbrella), 3x stability-verified."
+      },
+      "skill_observations": [
+        "'Every wave here has a live TEST-AUDIT.md with a real BLOCKED verdict, a concrete fix applied by a fresh spawn (never the auditor, never the original test-writer -- Phase 3.4.3's three-role separation), and the overlord independently re-confirming the fix by re-running the suite and spot-checking the diff. This is the design as specified, observed actually running end to end, four times in a row.' -- the-best-salesmen file, header section",
+        "'a wave with these findings hidden, run under the pre-auditor process, would most plausibly have shipped them and left ordinary TDD RED->GREEN discipline (or nothing at all) as the only backstop.' -- the-best-salesmen file, closing gate/process notes"
+      ],
+      "brief_dialect_note": "unknown -- not mentioned in this file",
+      "value_rating_0_3": 3,
+      "value_rating_rationale": "Caught a security-relevant body-content-leak gap (twice: original + regression), and a zero-coverage AC-30 gap where 'a real wiring bug ... would have shipped undetected' -- both explicit shipped-broken scenarios per source language. Also caught a tautological throttle test satisfiable by an implementation with zero throttle logic."
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "cash_print_pi_migration",
+      "source_file": "leandrc49__cash-print-cascades-2026-08-17-19.md",
+      "date": "2026-08-18T01:01:52Z",
+      "leaves_count": 5,
+      "notes_on_this_run": "Doubles as a deliberate manager-mode file-size ceiling experiment (leaf-01 assigned a 3,976-line file). Ceiling-experiment result is a separate axis from the audit findings below; recorded in skill_observations.",
+      "pre_spawn_audit_findings": [
+        {
+          "finding_id": "F1",
+          "severity": "red",
+          "category": "cross-file-conflict",
+          "quote_or_paraphrase": "The spec-mandated provider retagging would permanently break two pre-existing umbrella test files no leaf is allowed to touch (do_not_edit: tests/**) -- cash_e2e_runtime_core_mutations.test.mjs and cash_e2e_runtime_provider_mutations.test.mjs hardcoded the old vendor name/IDs, and leaf-04's new test directly contradicted one of them for the identical scenario id. There was no path through this cascade that leaves the full suite green -- a leaf could do fully spec-compliant work and still get rejected at the umbrella gate.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes -- 'the mechanism working as designed'; without the fix, cascade was unwinnable regardless of leaf quality",
+          "file_or_test_it_targeted": "cash_e2e_runtime_core_mutations.test.mjs, cash_e2e_runtime_provider_mutations.test.mjs (umbrella, parent-owned)"
+        },
+        {
+          "finding_id": "F2",
+          "severity": "yellow",
+          "category": "tautology",
+          "quote_or_paraphrase": "leaf-03's only 'composition' assertion (interaction check) was vacuous by construction: the secret it tried to prove got redacted rode on a field (authorization) that a pre-existing whitelist already dropped before redact() ever saw it -- the test would pass whether or not the collaborator call happened at all.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes",
+          "file_or_test_it_targeted": "leaf-03 composition/interaction test"
+        },
+        {
+          "finding_id": "F3-F7 (5 findings)",
+          "severity": "yellow",
+          "category": "boundary-dropped",
+          "quote_or_paraphrase": "credential-identity check too weak given this codebase's documented history of credential-swap incidents; a malformed-input case tested for only one of two symmetric code lanes; a secret-log scanner missing print() and most non-.info/.error log levels; three overly loose topic regexes with concrete false-positive words identified in the actual target document; a leaf's own vendor-name sweep omitting one of its own owned files, which currently has a live violation the sweep would never catch.",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes",
+          "file_or_test_it_targeted": "multiple leaf-owned test files, cash_print_pi_migration wave"
+        },
+        {
+          "finding_id": "F8",
+          "severity": "yellow",
+          "category": "spec-field-unasserted",
+          "quote_or_paraphrase": "the spec's own first acceptance criterion (AC-1, a repo-wide 'no vendor name anywhere in scripts/ or src/' sweep) had no true test anywhere in the cascade -- every per-leaf vendor sweep was scoped to that leaf's own file list. A live violation was found by direct grep in a file no leaf owned (src/cash_flow/buildLabelHtml.mjs:20, a stale comment referencing a renderer that no longer existed).",
+          "was_it_fixed_before_spawn": "yes",
+          "was_the_fix_material": "yes -- parent rewrote the comment and added a new parent-owned wave-level umbrella test for AC-1 specifically",
+          "file_or_test_it_targeted": "AC-1 repo-wide sweep; src/cash_flow/buildLabelHtml.mjs:20"
+        },
+        {
+          "finding_id": "5x green notes",
+          "severity": "green",
+          "category": "other",
+          "quote_or_paraphrase": "harness fidelity confirmed wrong-location-edit-resistant by construction; genuinely-RED confirmation on all 5 files; two minor unenforced-but-low-severity gaps explicitly accepted, not fixed, with reasoning recorded.",
+          "was_it_fixed_before_spawn": "no (2 of the 5 are explicitly accepted-not-fixed gaps; the other 3 are confirmatory notes requiring no fix)",
+          "was_the_fix_material": "no -- explicitly waved through by parent judgment",
+          "file_or_test_it_targeted": "unspecified low-severity gaps"
+        }
+      ],
+      "defects_that_slipped_past_the_auditor_anyway": [
+        {
+          "description": "At least leaf-02/03/04 edited live files in place and copied the result into staging -- the reverse of the brief's instructed order. git status showed 14 modified tracked files while three leaves were still running. leaf-03's own report that two regression tests 'went green once leaf-04 finished in parallel' means leaf-03's green was partly produced by a sibling's live edits -- neither leaf was actually verified in isolation.",
+          "category": "other",
+          "how_caught": "not caught by Phase 3.4 at all -- explicitly identified as the same failure class as a pre-auditor-era staging-bypass deviation, 'recurring two months later, post-auditor-change, unaffected by the shard-test-writer/Phase-3.4 addition ... because Phase 3.4 audits test quality, not execution-time isolation discipline, and G5's wave-snapshot check explicitly excludes leaf-owned paths from what it watches, by design'",
+          "citation": "leandrc49__cash-print-cascades file, 'Unplanned finding, same cascade' section"
+        }
+      ],
+      "outcome": {
+        "status": "admitted",
+        "detail": "All 8 fixed findings applied pre-impl; 0 pushed back on in this cascade. 'Every finding was independently re-verified against source by the parent before acting -- none taken on the auditor's word.'"
+      },
+      "skill_observations": [
+        "'no ceiling found at 3,976 lines... Both real implementation defects it produced traced to a permissive test-fake ($() silently returning {} for unwired nodes), not to file size... more actionable finding is that fake/harness quality bounds leaf implementation quality more than file size does.' -- ceiling-experiment result, same cascade",
+        "'This one was caught at the audit gate, pre-impl, for real production code' (re: F1, contrasted with pre-auditor-corpus C3 which was 'caught only after full implementation via dead-code inspection').' -- 'Why this file matters' section"
+      ],
+      "brief_dialect_note": "unknown -- not mentioned; all briefs noted as test_owned_by: parent",
+      "value_rating_0_3": 3,
+      "value_rating_rationale": "F1 caught a cascade-unwinnable cross-file contradiction pre-spawn -- 'correct leaf work, still-failing umbrella, no leaf empowered to fix it' -- the single richest catch in either corpus per the source file's own framing."
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "cash_print_sheets_queue",
+      "source_file": "leandrc49__cash-print-cascades-2026-08-17-19.md and leandrc49__shard-sizing-ab-2026-08-18-19.md (same cascade, second file has more detail)",
+      "date": "2026-08-18T14:44-14:49Z",
+      "leaves_count": 5,
+      "shards": "4 (A, B, C=2 leaves, D)",
+      "notes_on_sourcing_discrepancy": "cash-print-cascades file states 'No surviving audit artifact for this cascade ... absence noted, not confirmed either way whether Phase 3.4 ran and found nothing, or whether the artifact was simply not retained.' The shard-sizing-ab file, however, cites specific stats for this cascade's TEST-AUDIT (1,460 lines across 4 files, 140 boundary rows, 20 questions in 4 batches) and names two specific findings by id. Both are reported here; the discrepancy itself is unresolved in the source material.",
+      "pre_spawn_audit_findings": [
+        {
+          "finding_id": "shard-c-printjobs-unit-mismatch",
+          "severity": "unknown -- not given a red/yellow/green label in either source file",
+          "category": "umbrella-contradiction",
+          "quote_or_paraphrase": "printJobs counted in three incompatible units -- per-record in observeProviderEffects and per-lane boolean in liveObservation (leaf-03), pinned at 1 in the ledger (leaf-04). Those agree only at one printer per lane, and job_id is keyed on printer index, so N>1 is the designed case. Two leaves, one context, one finding. Split them and nothing in the run sees it.",
+          "was_it_fixed_before_spawn": "unclear -- not explicitly stated; inferable only from the cascade's overall 'all admitted clean' outcome",
+          "was_the_fix_material": "unclear",
+          "file_or_test_it_targeted": "observeProviderEffects / liveObservation (leaf-03), ledger (leaf-04), shard-c"
+        },
+        {
+          "finding_id": "shard-d-ac49-scope-beyond-leaf05-docs",
+          "severity": "unknown -- not given a red/yellow/green label",
+          "category": "cross-file-conflict",
+          "quote_or_paraphrase": "AC-49's scope reached into files leaf-05 was forbidden to edit, so shard-d could name the problem but not resolve it -- it escalated to the parent precisely because no shard could see the whole.",
+          "was_it_fixed_before_spawn": "unclear -- escalated to parent; resolution not detailed",
+          "was_the_fix_material": "unclear",
+          "file_or_test_it_targeted": "AC-49 scope, leaf-05-forbidden files, shard-d"
+        }
+      ],
+      "defects_that_slipped_past_the_auditor_anyway": [],
+      "outcome": {
+        "status": "admitted",
+        "detail": "All clean per post-review-log; two leaves admitted as a coupled pair (shard-c: leaf-03 + leaf-04, explicit 'coupled admission' verdict). 'Verdict: clear to admit -- 0 blocking' per GATES.md (shard-sizing file)."
+      },
+      "skill_observations": [
+        "'Zero cross-shard findings. All 20 questions in sheets_queue are scoped inside their own shard's territory ... the audit is also per-shard: each of the four auditors saw only its own shard's tests against its own shard's brief. Four auditors produce four blind spots between them.' -- shard-sizing-ab file"
+      ],
+      "brief_dialect_note": "unknown",
+      "value_rating_0_3": 2,
+      "value_rating_rationale": "The shard-c cross-leaf unit-mismatch is characterized as a genuine defect that only surfaced because that shard held two leaves together, and the cascade shipped clean -- but the source does not explicitly confirm this specific finding was fixed via the audit versus resolved some other way, so rated below 3 pending that gap."
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "cash_print_tunnel_push",
+      "source_file": "leandrc49__cash-print-cascades-2026-08-17-19.md and leandrc49__shard-sizing-ab-2026-08-18-19.md",
+      "date": "2026-08-18T19:24-19:26Z",
+      "leaves_count": 4,
+      "shards": "1 (default)",
+      "pre_spawn_audit_findings": [
+        {
+          "finding_id": "leaf-02-no-call-relationship (observation, not numbered in source)",
+          "severity": "unknown -- described as a cross-leaf observation, not colored",
+          "category": "other",
+          "quote_or_paraphrase": "'leaf-02's 3 impl_files have no in-repo call relationship' -- a statement about the shape of one leaf's decomposition that only reads as a finding when you hold the others alongside it.",
+          "was_it_fixed_before_spawn": "unknown",
+          "was_the_fix_material": "unknown",
+          "file_or_test_it_targeted": "leaf-02 impl_files (decomposition shape, not a test-content defect)"
+        }
+      ],
+      "defects_that_slipped_past_the_auditor_anyway": [],
+      "outcome": {
+        "status": "admitted",
+        "detail": "All clean. Parent-mechanical wave-close step: PRINT_QUEUE_* constants removed, 3 superseded queue tests deleted per explicit AC-15/16 ruling (design pivot mid-project, print path moved from Sheets-queue to Cloudflare Tunnel push). Final: 1034/1 suite, cascade umbrella green, AC-55 PASS."
+      },
+      "skill_observations": [
+        "'Same file, same size, both configurations, same result' -- re: the 4,200-line scripts/build_cash_workflow.mjs, leaf-01's target in both this run and sheets_queue, single writer + single auditor here vs dedicated shard there, both returned green with no quality difference. -- shard-sizing-ab file"
+      ],
+      "brief_dialect_note": "unknown",
+      "value_rating_0_3": 1,
+      "value_rating_rationale": "Only a decomposition-shape observation recorded; no correctness catch documented for this cascade specifically."
+    },
+    {
+      "repo": "leandrc49 (iCodeETL)",
+      "cascade_name": "cash_plugin_distribution",
+      "source_file": "leandrc49__cash-print-cascades-2026-08-17-19.md and leandrc49__shard-sizing-ab-2026-08-18-19.md",
+      "date": "2026-08-19T19:10-19:11Z",
+      "leaves_count": 2,
+      "shards": "1 (default)",
+      "pre_spawn_audit_findings": [],
+      "notes_on_findings": "shard-sizing-ab table lists '2' under 'questions' for this cascade but no content/severity is given for either question in either source file; TEST-AUDIT line count and boundary rows both shown as '--' (not recorded).",
+      "defects_that_slipped_past_the_auditor_anyway": [],
+      "outcome": {
+        "status": "admitted",
+        "detail": "All clean. +28 then +10 cumulative deltas, 0 regressions each. 1071 pass / 0 fail / 44 skipped final suite state. Git commit 15d2b2b corroborates."
+      },
+      "skill_observations": [],
+      "brief_dialect_note": "unknown",
+      "value_rating_0_3": 0,
+      "value_rating_rationale": "No findings content recorded in either source file for this cascade -- cannot credit the auditor with a specific catch here."
+    },
+    {
+      "repo": "switchboard (iCodeETL)",
+      "cascade_name": "slack-roster-command",
+      "source_file": "switchboard__slack-roster-command-2026-08-17.md",
+      "date": "2026-08-17T20:35-20:40Z (wave1 leaf-01/02/03/05), 20:40:51Z (wave2 leaf-04)",
+      "leaves_count": 5,
+      "pre_spawn_audit_findings": [
+        {
+          "finding_id": "9x nit (test_migration_052.py, test_config.py)",
+          "severity": "green (source label: 'nit', described as 'all real, all low-severity')",
+          "category": "spec-field-unasserted",
+          "quote_or_paraphrase": "exhaustive per-keyword/setting coverage gaps -- missing assertions for individual SQL clauses like LOGIN, CONNECTION LIMIT 5, statement_timeout, and a __repr__ secrets count.",
+          "was_it_fixed_before_spawn": "no",
+          "was_the_fix_material": "no -- parent's own recorded reasoning: 'the existing tests already assert the load-bearing security/behavior properties (role scope, no BYPASSRLS, narrow grants, policy source-scoping, job registration); declined to chase per-keyword-regex brittleness for syntax a reviewer can eyeball directly in the migration diff.'",
+          "file_or_test_it_targeted": "test_migration_052.py, test_config.py"
+        },
+        {
+          "finding_id": "bug-finding-dry-run-exit-code",
+          "severity": "red (source label: 'bug')",
+          "category": "other",
+          "quote_or_paraphrase": "a test named test_dry_run_exits_zero_without_sending never actually asserted returncode == 0 -- only checked stdout content -- so the name claimed a contract the test didn't verify.",
+          "was_it_fixed_before_spawn": "yes, but NOT as the auditor suggested",
+          "was_the_fix_material": "no -- the parent determined the suggested fix (adding returncode==0) would have made the test WRONG, since a sibling file (test_manual_roster_email.py) shows the script legitimately cannot guarantee exit 0 with an unreachable DATABASE_URL. Instead renamed the test to test_dry_run_never_sends_even_with_an_unreachable_db -- a name-only change that altered no assertion.",
+          "file_or_test_it_targeted": "test_slack_roster_email.py"
+        },
+        {
+          "finding_id": "question-post-response-url-wiring",
+          "severity": "yellow (source label: 'question')",
+          "category": "composition-missing",
+          "quote_or_paraphrase": "_post_response_url was unit-tested in isolation but never proven to be actually invoked end-to-end from main() on success/failure, despite the brief requiring that wiring.",
+          "was_it_fixed_before_spawn": "no",
+          "was_the_fix_material": "n/a -- 'accepted as a real gap, left unfixed by design ... judged not worth a fourth subprocess test in an already-large file; deferred to manual verification during the plan's own smoke-test step.'",
+          "file_or_test_it_targeted": "main() / _post_response_url wiring, app.py"
+        },
+        {
+          "finding_id": "test_job_payloads.py, test_slack_command.py",
+          "severity": "green",
+          "category": "other",
+          "quote_or_paraphrase": "no issues -- audit explicitly credits test_slack_command.py for asserting on an enqueued fixture's payload/requester content rather than only HTTP status, meeting the brief's composition (interaction-assertion) requirement.",
+          "was_it_fixed_before_spawn": "n/a -- clean",
+          "was_the_fix_material": "n/a",
+          "file_or_test_it_targeted": "test_job_payloads.py, test_slack_command.py"
+        }
+      ],
+      "defects_that_slipped_past_the_auditor_anyway": [],
+      "outcome": {
+        "status": "admitted",
+        "detail": "5 leaves, all clean per post-review-log."
+      },
+      "skill_observations": [
+        "'This is the one clear instance in either corpus of an overlord catching a Phase-3.4 auditor being wrong, not merely thorough -- the audit's own severity label (bug) turned out to describe a naming mismatch, not a behavioral gap.' -- switchboard file, 'Parent disposition' section",
+        "'Worth citing directly wherever the skill's documentation claims the overlord \"never delegates the reconciliation itself\": this is the concrete evidence for that claim actually mattering, not merely a defensive design detail.' -- switchboard file, closing section"
+      ],
+      "brief_dialect_note": "unknown -- not mentioned; test_owned_by: parent noted throughout",
+      "value_rating_0_3": 1,
+      "value_rating_rationale": "All 9 nits were waved through as non-material by the parent's own judgment; the one 'bug' label was itself off-target (the fix it implied would have broken the test, parent corrected via rename instead); the one composition-missing question was accepted as real but left deliberately unfixed. No catch here is credited with preventing a shipped-broken outcome."
+    }
+  ],
+  "summary": {
+    "severity_mix": {
+      "red": 4,
+      "yellow": 9,
+      "green_or_nit_or_confirmatory": 14,
+      "unknown_unlabeled": 4,
+      "note": "Red=4 (the-best-salesmen leaf-07 x2 + leaf-f4 x1; leandrc49 pi_migration F1 x1). Yellow=9 (the-best-salesmen leaf-06 x1 + leaf-f4-AC15 x1; leandrc49 pi_migration F2,F3-7,F8 = 7). Green/nit/confirmatory=14 (leandrc49 pi_migration 5 green notes; switchboard 9 nits). Unknown/unlabeled=4 (switchboard bug x1 + question x1, mapped loosely to red/yellow but using the source's own non-numeric vocabulary; cash_print_sheets_queue's 2 named cross-leaf findings with no color given at all). This mix is dominated by two cascades (the-best-salesmen, leandrc49 pi_migration) that happen to have retained full TEST-AUDIT.md artifacts; several other cascades in this corpus have no surviving artifact or an artifact whose findings weren't quoted in detail, so this is a lower bound, not a full census."
+    },
+    "fix_rate": {
+      "red_yellow_fixed_pre_spawn": "13/13 (100%) across the-best-salesmen and leandrc49 pi_migration -- every red/yellow finding in those two cascades was fixed pre-spawn by a fresh spawn (the-best-salesmen) or the parent directly (leandrc49)",
+      "green_tier_leandrc49_pi_migration": "2 of 5 green notes were explicit accept-not-fix waves; 3 were confirmatory (no fix needed)",
+      "switchboard_own_vocabulary": "0/11 fixed exactly as the auditor suggested; 1/11 (the 'bug') fixed differently (cosmetic rename, no assertion changed); 10/11 (9 nits + 1 question) explicitly waved/deferred with recorded parent reasoning",
+      "unclear_cases": "cash_print_sheets_queue's two named cross-leaf findings (shard-c-printjobs-unit-mismatch, shard-d-ac49-scope-beyond-leaf05-docs) have no stated fix disposition in either source file; only inferable from the cascade's overall 'all admitted clean' outcome"
+    },
+    "categories_caught": [
+      "cross-file-conflict (leandrc49 pi_migration F1; cash_print_sheets_queue shard-d-ac49-scope-beyond-leaf05-docs)",
+      "tautology (leandrc49 pi_migration F2; the-best-salesmen leaf-f4-debounce-throttle-tautology)",
+      "boundary-dropped (leandrc49 pi_migration F3-F7)",
+      "spec-field-unasserted (leandrc49 pi_migration F8; the-best-salesmen leaf-06-handler-body-assertion-gap, leaf-07-status-only-regression, leaf-07-ac30-zero-coverage; switchboard 9x nit)",
+      "composition-missing (switchboard question-post-response-url-wiring)",
+      "umbrella-contradiction (cash_print_sheets_queue shard-c-printjobs-unit-mismatch, category applied by this analysis; source itself gives no formal category label)",
+      "other (the-best-salesmen leaf-f4-ac15-hardcoded-key; switchboard bug-finding-dry-run-exit-code; cash_print_tunnel_push leaf-02-no-call-relationship)"
+    ],
+    "categories_missed": [
+      {
+        "category": "not in fixed vocabulary at all -- 'implementation-time code leak into shipped output'",
+        "citation": "the-best-salesmen leaf-f4: globalThis.jest shim inside production component code, caught only by admission-time diff review. Explicitly stated: 'a defect class Phase 3.4 does not cover at all -- it's an implementation-time leak into shipped code, not a pre-impl test-quality gap.'"
+      },
+      {
+        "category": "not in fixed vocabulary at all -- 'execution-time isolation/staging discipline'",
+        "citation": "leandrc49 cash_print_pi_migration: leaf-02/03/04 edited live files in place, reversing the brief's staging order; leaf-03's green partly produced by a sibling's live edits. Explicitly stated: 'Phase 3.4 audits test quality, not execution-time isolation discipline, and G5's wave-snapshot check explicitly excludes leaf-owned paths from what it watches, by design, in every version of the skill.'"
+      },
+      {
+        "category": "not in fixed vocabulary at all -- 'shared test-harness/infrastructure bugs discovered only at leaf runtime'",
+        "citation": "the-best-salesmen leaf-f1 (RTL auto-cleanup not registered) and leaf-f2 (mockReturnValue single-read stream collision) -- both discovered during leaf implementation, not flagged by the pre-spawn audit"
+      }
+    ],
+    "vocabulary_categories_with_zero_instances_either_way": [
+      "scale-not-ratio -- does not appear as caught or missed anywhere in this corpus",
+      "wrong-severity -- does not appear as a formally-applied category anywhere, though switchboard's bug-finding-dry-run-exit-code is arguably a near-miss instance of it (auditor's implied fix, not the severity label itself, was what was wrong)",
+      "mock-leak -- does not appear as a formally-applied category; leaf-f2's mockReturnValue stream-collision harness bug is adjacent in flavor but is a harness defect discovered at runtime, not a pre-spawn audit finding, so it is not classified as mock-leak here"
+    ],
+    "shard_sizing_comparison": {
+      "cascades_compared": "cash_print_sheets_queue (5 leaves, 4 shards) vs cash_print_tunnel_push (4 leaves, 1 shard) vs cash_plugin_distribution (2 leaves, 1 shard) -- same repo, same overlord, overlapping impl files, 2026-08-18 to 2026-08-19",
+      "headline_quote": "'The 4-shard run cost roughly 4x the audit overhead for the same admission outcome.' -- leandrc49__shard-sizing-ab file",
+      "same_file_same_result": "'scripts/build_cash_workflow.mjs (4200 lines)' was leaf-01's target in both sheets_queue (dedicated shard-a, alone) and tunnel_push (shared shard with 3 other leaves). 'The single writer handled it, and the single auditor returned green on leaf-01's goal fidelity. Same file, same size, both configurations, same result.'",
+      "what_more_shards_bought": "'Nothing that the shared context wouldn't have produced, and one thing they actively cost. Zero cross-shard findings ... each of the four auditors saw only its own shard's tests against its own shard's brief. Four auditors produce four blind spots between them.'",
+      "cross_leaf_defect_only_surfaced_in_the_shared_shard": "'The one genuinely cross-leaf defect came from the only shard holding two leaves.' (shard-c-printjobs-unit-mismatch, leaf-03 vs leaf-04 unit inconsistency) -- 'Two leaves, one context, one finding. Split them and nothing in the run sees it.'",
+      "single_shard_produced_a_cross_leaf_observation_for_free": "tunnel_push's single auditor flagged 'leaf-02's 3 impl_files have no in-repo call relationship' -- 'a statement about the shape of one leaf's decomposition that only reads as a finding when you hold the others alongside it.'",
+      "skill_rule_gap_identified": "check_invariants.check_shard_sizing only fails a shard holding TOO MANY leaves, never a wave split into too many shards: '5 leaves / 4 shards -> PASS (no finding); 7 leaves / 1 shard -> FAIL: 7 leaves in one shard.' Recommended fix quoted: 'invert the default. One shard, unless a stated trigger fires ... make check_shard_sizing two-sided so shards > ceil(leaves / cap) fails the Phase 3 audit the same way under-sharding does.'",
+      "conclusion": "On this evidence, splitting a small (4-6 leaf) wave into multiple shards did not increase finding count or quality -- it produced zero cross-shard findings, cost ~4x the audit overhead, and the one real cross-leaf defect found in the whole comparison came specifically from the shard that was NOT split (the 2-leaf shard-c). More shards = smaller per-auditor context = more blind spots between auditors, not fewer."
+    },
+    "value_ratings": [
+      {"cascade": "the-best-salesmen__stage2-3", "rating": 3},
+      {"cascade": "leandrc49__cash_print_pi_migration", "rating": 3},
+      {"cascade": "leandrc49__cash_print_sheets_queue", "rating": 2},
+      {"cascade": "leandrc49__cash_print_tunnel_push", "rating": 1},
+      {"cascade": "leandrc49__cash_plugin_distribution", "rating": 0},
+      {"cascade": "switchboard__slack-roster-command", "rating": 1}
+    ],
+    "false_positives_or_ineffective_fixes": [
+      {
+        "cascade": "switchboard__slack-roster-command",
+        "finding_id": "bug-finding-dry-run-exit-code",
+        "description": "The auditor's 'bug' finding (test never asserts returncode==0 despite its name claiming it) was factually accurate about the assertion gap, but the fix it implicitly called for (add returncode==0) would have made the test WRONG, because the script legitimately cannot guarantee exit 0 given an unreachable DATABASE_URL (confirmed by a sibling test file's own comment). The parent's actual fix was a rename only -- no assertion was added or changed. This is the corpus's one clear case of an auditor finding needing an overlord override rather than a straight fix-as-suggested.",
+        "citation": "switchboard file, 'Parent disposition' section: 'This is the one clear instance in either corpus of an overlord catching a Phase-3.4 auditor being wrong, not merely thorough.'"
+      }
+    ]
+  },
+  "notes": [
+    "INDEX.md's own stated purpose for this corpus: to compare 'what the pre-auditor process actually caught (via TDD side-effects and manual admission-time diff review only) against what Phase 3.4 catches pre-impl' -- this file (post-auditor-narrative.json) covers only the WITH-auditor side; no direct pre/post comparison is computed here.",
+    "Only 3 of 9 originally-scanned projects had any post-cutoff manager-mode activity (the-best-salesmen, leandrc49, switchboard) -- this is a small, non-random sample of production cascades, not a systematic trial.",
+    "Two of the six sub-cascades in the leandrc49 file (cash_print_sheets_queue in its cash-print-cascades framing, cash_print_tunnel_push, cash_plugin_distribution) have no surviving/detailed TEST-AUDIT artifact in the primary run-dump file; some of that gap is partially filled by the separate shard-sizing-ab file, which is explicitly a cross-run comparison document, not a run dump, and only reports findings relevant to the shard-count question.",
+    "No cascade in this corpus reports a case where a fix prompted by the auditor was later shown to be simply wrong (i.e., the auditor's finding held up in every case except switchboard's bug-finding, where the finding's factual premise was correct but its implied remedy was not).",
+    "Brief-dialect (inlined TEST-AUDIT-BRIEF vs path-list) is not discussed in any of the four detail files or INDEX.md; all cascades are noted only as test_owned_by: parent throughout, which is a different axis (test authorship) from brief dialect.",
+    "Category vocabulary gap: three of the corpus's most narratively significant 'slipped past' items (implementation-code leak into shipped output, staging/isolation-discipline violations, shared-harness bugs found only at runtime) do not fit any category in CATEGORY_VOCAB.md, because the vocabulary is scoped to test-content defects and these are not test-content defects -- they are implementation-time or process-discipline failures that a pre-spawn test-quality auditor is structurally unable to reach. This is itself a finding worth surfacing to Agora rather than forcing a fit."
+  ]
+}

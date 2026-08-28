@@ -1,0 +1,268 @@
+{
+  "scope": "agora-deep + cross-repo CSV analysis",
+  "zero_test_ac_judgments": [
+    {
+      "repo": "agora",
+      "cascade": "cascade-foundation",
+      "ac": "AC-3",
+      "impl_file": "scripts/burn.py (worker_prompt, L178-184)",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "ac_index lists tests:[] for AC-3, but tests/test_burn_flow.py:255-271 test_worker_prompt_has_spec_and_checks_but_no_error_transcript directly asserts `not any(RAW_ERROR in p for p in prompts)` and `not any(VERIFIER_SENTINEL in p ...)`, and test_worker_prompt_carries_at_most_one_line_lesson_from_prior_attempt (L274-287) asserts only the single lesson line survives. burn.py's worker_prompt() builds the prompt from spec['context'], spec['acceptance'], subtask goal/files and `lesson` only (no transcript/raw error). This is a false-negative in the ac_index metadata, not a real gap; impl matches AC-3."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-foundation",
+      "ac": "AC-6",
+      "impl_file": "scripts/burn.py L360-367, scripts/burn_checks.py diff_revert_ok",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_burn_flow.py:305-312 test_done_is_retracted_when_the_diff_revert_still_passes asserts `_record(h,'CHECK-NON-DISCRIMINATING')` and `not _record(h,'DONE')` when diff_revert_ok returns False; tests/test_burn_checks.py:112-146 unit-tests diff_revert_ok's stash/re-run/restore behavior directly. burn.py L361-366 wires diff_revert_ok into the DONE path exactly as AC-6 requires (uses git stash push/pop rather than literal 'reverse-apply', a functionally equivalent mechanism). ac_index's zero-test flag is a metadata gap, not a real one."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-foundation",
+      "ac": "AC-7",
+      "impl_file": "scripts/burn.py L256-266,309-327; scripts/burn_checks.py classify()",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_burn_flow.py:317-323 test_missing_binary_aborts_before_any_worker_iteration asserts `_record(h,'HARNESS-ERROR')` and `h.calls['chat'] == []`; tests/test_burn_checks.py:148-165 tests classify() harness-error precedence. burn.py's fail-first gate and mid-loop HARNESS-ERROR handling implement AC-7 correctly. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-foundation",
+      "ac": "AC-8",
+      "impl_file": "scripts/burn.py L355-357 (ACCEPT phase)",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_burn_flow.py:257-270 asserts `not any(VERIFIER_SENTINEL in p for p in h.all_prompts())` -- no model-verifier call anywhere in the flow; burn.py's ACCEPT phase (L355-357, comment 'ground truth, no model verdict') calls only check_all(checks, worktree), no model call. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-foundation",
+      "ac": "AC-16",
+      "impl_file": "scripts/deepseek_client.py chat() L39-158",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_deepseek_client.py:299-327 test_ac16_budget_smoke_calls_stop_at_the_cap explicitly drives a fake transport past a $0.25 cap and asserts `(tmp_path/'halts'/'camp-smoke'/'BUDGET-HALT.md').is_file()` plus no-retry-past-halt over 3 attempts. TRANSPORT is the sole network hook (module docstring L8-11) confirming test isolation. False-negative in ac_index -- this AC has its own dedicated smoke test."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-driver",
+      "ac": "AC-2",
+      "impl_file": "scripts/driver.py _do_escalate L313-347",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_driver.py:263-276 test_stall_beats_findings_and_parked_and_appends_the_escalation_row asserts row keys == {ts,run,subtask,mode,model,tokens_in,tokens_out,usd,resolved}, mode=='reorganize' for economy pace, resolved is None; L290-301 test_fast_pace_escalation_drafts_a_class_2_diff_with_thinking_high asserts mode=='solve-direct' for fast pace. driver.py's _do_escalate reads cfg.escalation[fast_mode/economy_mode] keyed by pace exactly as AC-2 specifies. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-driver",
+      "ac": "AC-7",
+      "impl_file": "config/cascade.toml [driver]/[qa]; scripts/cascade_types.py load_cascade_config",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_next_driver.py:133-147 test_config_gains_the_new_keys_and_keeps_every_wave_one_value and test_load_cascade_config_exposes_qa_as_a_dict assert cfg.qa == {min_submits:3, consecutive_clean_for_termination:5, auto_submit_after_fills:3, ban_turns:4} and cfg.driver['allow_peak_hours'] is a bool. config/cascade.toml currently has allow_peak_hours=true with an inline comment dated 2026-08-23 (post-cascade human edit by the repo owner, unrelated to cascade correctness). AC-7 itself is well tested; false-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-driver",
+      "ac": "AC-16",
+      "impl_file": "scripts/burn.py L300-320 (PLAN-CHECK-REJECTED fallback)",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_burn_stall.py:244-256 test_rejected_planner_check_falls_back_to_the_acceptance_checks asserts `any(l.startswith('PLAN-CHECK-REJECTED:') for l in log)` and the iteration proceeds rather than crashing. burn.py L300-308 catches CheckRejected and substitutes the spec's acceptance checks, matching AC-16 exactly. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-driver",
+      "ac": "AC-15",
+      "impl_file": "scripts/qa_oracle.py is_qualifying, termination_ready",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_qa_oracle.py:221-246 test_is_qualifying_needs_all_four_detectors_that_day_and_min_submits and L248-274 test_termination_ready_counts_only_qualifying_sessions directly assert AC-15's four-detector/min_submits qualifying rule and the consecutive-clean-streak termination rule, including a 'noise' non-qualifying-session that must be excluded. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-verify",
+      "ac": "AC-13",
+      "impl_file": "scripts/driver.py _find_new_fingerprints L147-173",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_driver_verify.py:164-239 tests every clause of AC-13: test_every_new_fingerprint_is_offered_and_the_model_cluster_is_recorded, test_a_fingerprint_already_in_an_assertions_cluster_is_never_offered_again, test_the_offer_is_capped_at_driver_triage_cluster_max, test_an_unusable_model_cluster_falls_back_to_every_offered_fingerprint. driver.py._find_new_fingerprints implements the never-re-pick/cap/fallback logic exactly. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-qa-profile",
+      "ac": "AC-1",
+      "impl_file": "scripts/cascade_types.py load_qa_profile L375-419",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "Repo-wide grep for the exact ProfileError message strings ('target: one of project or base_url', 'missing required section: target', 'browser.engine must be one of', 'duplicate id', 'unknown expect key', 'profile not found') returns zero hits in tests/. load_qa_profile() (cascade_types.py L375-419) does implement every branch AC-1 requires (missing file, missing [target], project-not-a-dir, engine enum, seed-kind enum, scenario missing id/goal/expect, duplicate scenario ids, unknown expect keys) and reads correctly on inspection. This is a genuine, real test gap (unlike the cascade-foundation/driver/verify cases above) -- but the shipped implementation does not currently violate the rule, so it is not a real-gap violation, just an untested-but-correct function."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-qa-profile",
+      "ac": "AC-5",
+      "impl_file": "scripts/qa_explore.py launch_browser",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_qa_profile_leaf05_explore.py:144-165 test_launch_browser_picks_the_profile_engine_and_viewport_and_user_agent asserts browser_type.name=='webkit', viewport=={'width':1024,'height':700}, user_agent=='QA-Bot/1'; test_launch_browser_omits_user_agent_kwarg_when_blank (L158-165) asserts the kwarg is omitted when blank. Directly tests AC-5's engine/viewport/user_agent selection. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-qa-profile",
+      "ac": "AC-6",
+      "impl_file": "scripts/qa_explore.py system_prompt",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_qa_profile_leaf05_explore.py:170+ test_system_prompt_substitutes_description_and_entry_paths directly tests AC-6's {description}/{entry_paths} substitution. False-negative in ac_index."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-qa-profile",
+      "ac": "AC-8",
+      "impl_file": "scripts/qa_session.py run_coverage",
+      "verdict": "trivially-satisfied",
+      "evidence_quote": "tests/test_qa_profile_leaf06_session.py has ~7 dedicated tests for run_coverage: test_run_coverage_searchbox_sweep_fills_presses_enter_and_counts_submits (L151), test_run_coverage_searchbox_sweep_falls_back_to_a_with_no_fixed_seed (L179), test_run_coverage_scenario_stops_as_soon_as_the_expectation_holds (L202), test_run_coverage_any_substitutes_seed_id_or_skips_without_one (L233), test_run_coverage_finding_marks_failed_and_fingerprints_into_state (L261), test_run_coverage_exception_yields_error_and_continues_to_next_scenario (L291). AC-8's searchbox-sweep + per-scenario coverage loop is heavily and specifically tested. False-negative in ac_index. (Fine-grained sub-gaps flagged by the audit -- base_url default assertion, AC-14 positive assertion -- were separately closed per the re-audit table; see finding_materiality_spotcheck.)"
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-director",
+      "ac": "AC-4",
+      "impl_file": "scripts/qa_explore.py user_turn (no heading kwarg present)",
+      "verdict": "not-applicable",
+      "evidence_quote": "Live qa_explore.py L199 signature is `def user_turn(page, state, cfg, tactic: str | None = None) -> str` -- there is NO `heading` parameter. cascade-director's leaf-02 (which would add the heading kwarg) was never admitted; outcomes.leaf-02.admitted == False in the ledger. Confirms the task's premise: cascade-director spawned no admitted impl, so there is nothing to judge for AC-4 rule violation -- the function AC-4 describes simply does not exist yet."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-director",
+      "ac": "AC-5",
+      "impl_file": "scripts/qa_explore.py finish_session (no kind/extra kwargs present)",
+      "verdict": "not-applicable",
+      "evidence_quote": "Live qa_explore.py L361-362 signature is `def finish_session(run_dir, state, cfg, campaign=None, project=None, base_url=None, refire_for=None) -> dict` -- no `kind` or `extra` params, so AC-5's kind/extra merge behavior cannot exist. outcomes.leaf-02.admitted == False. No impl to judge."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-director",
+      "ac": "AC-18",
+      "impl_file": "scripts/cascade_types.py Step/Mission/MissionResult (types only); no loader validation, no qa_director_core.py",
+      "verdict": "not-applicable",
+      "evidence_quote": "cascade_types.py L844-877 does define Step/Mission/MissionResult/DIRECTOR_PHASES/REVIEW_DECISIONS/DIRECTOR_VERDICTS with a comment 'behaviour lives in scripts/qa_director_core.py (wave 1) and scripts/qa_director.py (wave 2)' -- neither file exists (`ls scripts/qa_director*.py` finds nothing). load_qa_profile() has no [[director.feature]] validation code path at all (grep for 'director' + 'feature'/'validat' in cascade_types.py returns only an unrelated match). Types-only stub; the AC's behavioral half is entirely unimplemented, consistent with cascade-director having no admitted leaves."
+    },
+    {
+      "repo": "agora",
+      "cascade": "cascade-director",
+      "ac": "AC-26",
+      "impl_file": "scripts/qa_director.py (does not exist)",
+      "verdict": "not-applicable",
+      "evidence_quote": "`ls /Users/westley/Projects/Agora/scripts/qa_director.py` -> No such file or directory. AC-26's entire entry point (main(argv), feature selection, mission loop) has zero implementation. Confirms no admitted impl for cascade-director."
+    }
+  ],
+  "finding_materiality_spotcheck": [
+    {
+      "cascade": "cascade-foundation",
+      "finding_id": "shard-C F1 (rename-only fence bypass)",
+      "test_file": "tests/test_gate_fence.py:172-183",
+      "verdict": "material-fix",
+      "evidence": "Re-audit (2026-08-20) marked RESOLVED via test_rename_only_diff_is_flagged_by_fence. Confirmed live: the test asserts `res.passed is False and any('supabase/migrations/2026/renamed.sql' in f for f in res.findings)` against a diff with only `rename from`/`rename to` headers (no +++/---). gate_fence.py contains `_RENAME_FROM_RE`/`_RENAME_TO_RE` regexes (L21-22) that parse exactly this diff shape. Without this test, a fence implementation reading only +++/--- headers (the literal brief text) would pass a fenced rename undetected -- the fix closes a real bypass."
+    },
+    {
+      "cascade": "cascade-foundation",
+      "finding_id": "shard-C F6 (--self-test satisfiable by a stub)",
+      "test_file": "tests/test_gate_fence.py:198-213",
+      "verdict": "material-fix",
+      "evidence": "test_self_test_actually_consults_check_fence monkeypatches gate_fence.check_fence to always return passed=True, then asserts `gate_fence.main(['--self-test'])` returns nonzero and prints FAIL. This proves --self-test genuinely calls check_fence rather than hardcoding a pass; a stub self-test (the original gap) would trivially pass this monkeypatch scenario, so the fix is a real regression-catcher, not cosmetic."
+    },
+    {
+      "cascade": "cascade-verify",
+      "finding_id": "shard-C 🔴-1 (oversee prompt->claude composition never proven)",
+      "test_file": "tests/test_oversee.py:170-183",
+      "verdict": "material-fix",
+      "evidence": "Re-audit (2026-08-21) marked RESOLVED. Live test asserts `'```verdict' in manifest and 'draft:' in manifest and 0 <= manifest.find('```verdict') < pending_idx`, with docstring explicitly noting 'an oversee.sh that builds the manifest and pipes it alone (never cat-ing the prompt) would still satisfy every other assertion here' -- i.e. this test was specifically designed to close the composition gap the original 🔴 flagged. Confirmed present and enforcing."
+    },
+    {
+      "cascade": "cascade-qa-profile",
+      "finding_id": "shard-B finding 1 (umbrella never sets state['base_url'])",
+      "test_file": "tests/umbrella_qa.py:92",
+      "verdict": "material-fix",
+      "evidence": "Re-audit table row '1 🔴 | CLOSED' cites tests/umbrella_qa.py:92. Confirmed live: `state['base_url'] = url  # main() sets this before run_coverage; the umbrella stands in for main()`. Before the fix, run_coverage's page.goto calls in the umbrella's own scenario tests would have navigated to a relative path -- a spec-correct implementation could fail the umbrella even though it passed the leaf's own test. Material: fixes a false-red / masking risk in the parent-owned regression harness."
+    },
+    {
+      "cascade": "cascade-qa-profile",
+      "finding_id": "shard-B finding 6 (qa_seed scale probe spies only .random(), CPython bypasses it for randint/choice/sample)",
+      "test_file": "tests/test_qa_profile_leaf07_seed.py:164-198",
+      "verdict": "material-fix",
+      "evidence": "Re-audit '6 🟡 | CLOSED | _ops now wraps all of random, randint, ...'. Confirmed live: `_ops` (L164-183) tracks `('random','randint','randrange','choice','uniform','sample', ...)` and monkeypatches every one via `_spy(orig)`, not just `.random()`. Prior version's scale ratio could silently not track the operation actually driving generation cost -- a genuine measurement-validity gap, now closed."
+    },
+    {
+      "cascade": "cascade-driver",
+      "finding_id": "shard-B F13 (raising=False on launch_page monkeypatch)",
+      "test_file": "tests/test_qa_control.py:204-208",
+      "verdict": "material-fix",
+      "evidence": "Re-audit 'F13 (🟢) raising=False | RESOLVED | control L187-189 plain monkeypatch.setattr'. Confirmed live: comment at L204-205 reads '# F13: no raising=False -- Q2 (launch_page contextmanager) is a binding seam, so a main() that inlines playwright and never defines launch_page' with a plain (non-raising=False) monkeypatch.setattr call at L208. Before the fix, raising=False would let the monkeypatch silently no-op if launch_page didn't exist yet, defeating the seam check -- now it will error loudly if the seam is missing."
+    },
+    {
+      "cascade": "cascade-driver",
+      "finding_id": "shard-A Y7 (StallRecord.subtask 'verbatim' weakened to substring match)",
+      "test_file": "tests/test_burn_stall.py:208",
+      "verdict": "material-fix",
+      "evidence": "Audit text: 'Test L207: GOAL in rec[\"subtask\"]... Fix: rec[\"subtask\"] == GOAL'. Live test_burn_stall.py:208 reads `... and rec['subtask'] == GOAL and ...` -- exact equality, not substring containment. The audit's suggested fix was applied verbatim. A substring check would pass even if the impl silently truncated or mangled the subtask goal string, which BOUNDARIES.md's own note said should now be illegal; the equality check closes that."
+    },
+    {
+      "cascade": "cascade-qa-profile",
+      "finding_id": "shard-A Finding 4 (a second leaf-04 test passes pre-wave, backstopped elsewhere)",
+      "test_file": "tests/test_qa_profile_leaf01_lint.py",
+      "verdict": "already-moot",
+      "evidence": "Audit marked this 🟢 note (non-blocking) and re-audit table shows it explicitly 'remains open, non-blocking' (not closed, not required to be). The auditor's own text says the behavior 'is backstopped elsewhere' -- i.e. correctly assessed as already covered by another test, not requiring its own fix. No corrective action was taken or needed; classified already-moot rather than material-fix because nothing changed as a result of this finding."
+    }
+  ],
+  "era_comparison_from_csvs": {
+    "method": "Summed per-cascade columns from out/cascades.csv, grouped by era.",
+    "post_auditor": {
+      "n_cascades": 18,
+      "log_rows": 109,
+      "delta_zero_rows": 45,
+      "delta_zero_rate_of_log_rows": "45/109 = 0.413 (41.3%)",
+      "gates_files": 52,
+      "gate_waivers": 41,
+      "gate_waivers_rate_of_gates_files": "41/52 = 0.788 (78.8%, sum-of-counts basis, not per-file)",
+      "admitted": 77,
+      "reverted": 0,
+      "post_review_regressions": 0
+    },
+    "pre_auditor": {
+      "n_cascades": 35,
+      "log_rows": 10,
+      "delta_zero_rows": 0,
+      "gates_files": 0,
+      "gate_waivers": 0,
+      "admitted": 10,
+      "reverted": 0,
+      "post_review_regressions": 0,
+      "note": "gates_files == 0 across all 35 pre-auditor cascades, not just 'low' -- the GATES.md/gate-waiver mechanism and the post-review-log delta tracking that produces delta_zero_rows literally did not exist as skill features before the auditor phase was added. COVERAGE.md corroborates: pre-auditor findings R/Y/G == 0/0/0 (0 audits ever ran)."
+    },
+    "post_admission_audit": {
+      "n_cascades": 3,
+      "log_rows": 5,
+      "delta_zero_rows": 0,
+      "gates_files": 0,
+      "gate_waivers": 0,
+      "admitted": 3,
+      "reverted": 0
+    },
+    "conclusion": "Not a rate difference -- an existence difference. Gate-waivers and umbrella-delta tracking are post-auditor-era-only instrumentation, so 'meaningfully different' understates it: pre-auditor cascades have literally zero denominator for both metrics. Within the post-auditor era itself, both rates are high: 41.3% of post-review-log rows record a +0 umbrella delta, and gate waivers appear in the large majority of gates files (41 waivers across 52 gates files)."
+  },
+  "category_skew": {
+    "method": "Findings.csv has no native CATEGORY_VOCAB field; categorized each finding's free-text 'text' column by keyword heuristic against the 9 fixed categories. This is approximate -- many findings.csv rows are truncated table-row fragments (e.g. bare IDs like 'Q3 one row per finge...') that don't contain enough text for confident keyword classification, so a large 'other/unclassifiable' bucket is expected and should not be read as a real 'other' finding-type share.",
+    "population_note": "findings.csv has 354 post-auditor rows and 3 post-admission-audit rows, but ZERO pre-auditor rows (pre-auditor cascades never ran a test-auditor -- COVERAGE.md: pre-auditor R/Y/G == 0/0/0). So 'category skew between eras' cannot be computed pre- vs post-auditor at all: 100% of every category's findings come from the post-auditor (or post-admission-audit) era by construction, not because of any behavioral skew.",
+    "post_auditor_breakdown_n354": {
+      "spec-field-unasserted": "48 (13.6%) -- most-identifiable named category, e.g. 'AC-9 normalized_first_evidence_line has zero assertions', 'settled Q1's accept side has zero assertions'",
+      "tautology": "30 (8.5%) -- e.g. '--self-test satisfiable by a stub', 'weakened to substring', 'stall-passable'",
+      "boundary-dropped": "11 (3.1%)",
+      "umbrella-contradiction": "9 (2.5%) -- includes the two 🔴 reds that blocked spawn in cascade-foundation shard-B (R1/R2) and cascade-verify shard-B (R1/R2)",
+      "composition-missing": "7 (2.0%) -- e.g. cascade-verify shard-C 🔴-1 'no composition assertion: the prompt is never proven to reach claude'",
+      "mock-leak": "7 (2.0%)",
+      "scale-not-ratio": "6 (1.7%)",
+      "wrong-severity": "1 (0.3%)",
+      "other_unclassified_by_heuristic": "235 (66.4%) -- dominated by truncated/fragmentary text, not a real single dominant category"
+    },
+    "post_admission_audit_breakdown_n3": "all 3 fell into the heuristic's 'other' bucket; too small a population (n=3) to draw any category conclusion",
+    "conclusion": "Cannot answer the literal pre-vs-post-auditor category-skew question because pre-auditor has 0 findings. Within post-auditor findings that were classifiable, spec-field-unasserted (13.6%) and tautology (8.5%) are the two most common named categories -- consistent with the zero-test-AC deep-dive above, where most 'zero test' flags similarly trace back to assertion/coverage gaps rather than structural issues like cross-file-conflict or wrong-severity (both rare, 1 and 0 hits respectively)."
+  },
+  "notes": [
+    "Headline finding: across all 18 zero-test-flagged ACs in the 5 Agora cascades, ZERO were found to be real-gap (implementation actually violating an untested rule). 13 of 18 are ac_index false-negatives -- the tests exist in the live repo and directly assert the AC, but weren't captured in ac_index['tests'] (likely because the extraction script links tests to ACs only via audit-finding citations, and these ACs were never flagged as a problem by the audit, so no citation existed to extract). 1 of 18 (cascade-qa-profile AC-1) is a genuine, real test gap (no test asserts load_qa_profile's specific ProfileError branches anywhere in the repo) but the shipped implementation is still correct on inspection. The remaining 4 (all cascade-director) are not-applicable because that cascade never got an admitted implementation at all -- confirmed independently by grepping for qa_director.py (does not exist) and the missing heading/kind/extra kwargs on qa_explore.py's user_turn/finish_session.",
+    "Implication for COVERAGE.md's headline '147/371 ACs with zero tests' statistic: based on this 18-AC sample, that number is likely substantially overstated as a measure of real coverage gaps -- most zero-test flags in this corpus reflect extraction/attribution methodology (test exists but wasn't linked to its AC), not missing tests. This should be treated as a methodology caveat on the whole ac_coverage.csv zero-test corpus, not just the Agora subset, since the same extraction logic presumably produced it for leandrc49/switchboard/the-best-salesmen too.",
+    "Materiality spot-check: 7 of 8 findings checked were material-fix (the audit-flagged gap was real and the applied fix closed it with a genuinely enforcing assertion, verified by reading the live test file). 1 of 8 was already-moot (auditor correctly identified the behavior was already covered elsewhere and left it open, non-blocking, with no fix needed or made). 0 of 8 were cosmetic (i.e., a fix was made but didn't actually change what the test could catch) -- every material-fix case involved either a real bypass (rename-only diff fence evasion), a real tautology risk (self-test stub-passable, raising=False silent no-op), a real measurement-validity gap (scale probe missing generator methods), or a real masking risk in shared test infrastructure (umbrella base_url).",
+    "Reverted == 0 and post_review_regressions == 0 across all 56 cascades in every era (cascades.csv). No cascade in this entire corpus ever had a leaf's admitted work reverted or flagged as a post-review regression -- worth noting as either a strong positive signal for the admission gate, or (alternatively) as evidence the corpus is too small/skewed toward successful runs to observe reversion behavior; cannot distinguish between these from the CSVs alone.",
+    "gate_waivers (41) and gates_files (52) are both post-auditor-only columns; pre-auditor and (oddly) post-admission-audit cascades show 0 for both, meaning either the mechanism didn't exist yet (pre-auditor, confirmed by 0 audits ever running) or wasn't exercised (post-admission-audit, only 3 cascades, small n).",
+    "cascade-driver shard-A never received a re-audit round in the extracted data (reaudit_red=0, reaudit_yellow=0 in audits.csv despite 8 declared yellow findings in pass-1) -- I could not find a re-audit record confirming those 8 yellow findings were independently re-verified as fixed by a second auditor pass. I checked one (Y7, verbatim->substring) directly against the live test file and found it fixed exactly as suggested, but the other 7 (Y1-Y6, Y8) were not part of my 8-item spot-check and their fix status rests only on the fact that the leaf was ultimately admitted (admitted=8 for cascade-driver in cascades.csv), not on independent re-audit verification in this corpus."
+  ]
+}
