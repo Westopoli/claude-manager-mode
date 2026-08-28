@@ -8,3 +8,13 @@ __pycache__/
 # fixture suites unrunnable on a fresh clone.
 !tests/fixtures/**/.swarm/
 !tests/fixtures/**/.swarm/**
+# Claude Code per-user state
+.claude/settings.local.json
+.claude/RESUME.md
+.claude/worktrees/
+# skill-audit data derived from private transcripts / other repos — keep local
+research/skill-audit-2026-08/C-tokens/out/
+research/skill-audit-2026-08/C-tokens/SUMMARY.md
+research/skill-audit-2026-08/B-test-audit/ledgers/
+research/skill-audit-2026-08/B-test-audit/out/
+research/skill-audit-2026-08/B-test-audit/COVERAGE.md
