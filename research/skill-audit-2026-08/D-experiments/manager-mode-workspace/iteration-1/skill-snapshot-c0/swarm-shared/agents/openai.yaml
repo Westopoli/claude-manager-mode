@@ -1,0 +1,4 @@
+interface:
+  display_name: "Swarm Shared"
+  short_description: "Support assets for Manager Mode"
+  default_prompt: "Use $manager-mode for the cascade; $swarm-shared only provides support assets."

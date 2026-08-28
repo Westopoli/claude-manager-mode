@@ -59,6 +59,49 @@ class MineTranscriptsTests(unittest.TestCase):
         self.assertEqual(mt.cascade_slug("work at .swarm/cash_print_sheets_queue/worktrees/leaf-01/"), "cash_print_sheets_queue")
         self.assertEqual(mt.cascade_slug("no swarm path here"), "")
 
+    def test_classify_overlord_by_skill_call(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "session.jsonl"
+            w(p, [
+                {"type": "assistant", "timestamp": "2026-01-01T00:00:00Z",
+                 "message": {"id": "m1", "model": "claude-opus-5", "usage": {},
+                            "content": [{"type": "tool_use", "name": "Skill",
+                                         "input": {"skill": "manager-mode", "args": "x"}}]}},
+            ])
+            is_overlord, count, trigger = mt.classify_overlord(p)
+            self.assertTrue(is_overlord)
+            self.assertEqual(trigger, "skill:manager-mode")
+
+    def test_classify_overlord_by_task_count(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "session.jsonl"
+            w(p, [
+                {"type": "assistant", "timestamp": "2026-01-01T00:00:00Z",
+                 "message": {"id": "m1", "model": "claude-opus-5", "usage": {},
+                            "content": [
+                                {"type": "tool_use", "name": "Task",
+                                 "input": {"description": "leaf-01: implement cache.py"}},
+                                {"type": "tool_use", "name": "Task",
+                                 "input": {"description": "Shard-test-writer: write RED tests"}},
+                            ]}},
+            ])
+            is_overlord, count, trigger = mt.classify_overlord(p)
+            self.assertTrue(is_overlord)
+            self.assertEqual(count, 2)
+            self.assertEqual(trigger, "task_count")
+
+    def test_classify_overlord_false_for_single_unrelated_task(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "session.jsonl"
+            w(p, [
+                {"type": "assistant", "timestamp": "2026-01-01T00:00:00Z",
+                 "message": {"id": "m1", "model": "claude-opus-5", "usage": {},
+                            "content": [{"type": "tool_use", "name": "Task",
+                                         "input": {"description": "Explore the codebase for X"}}]}},
+            ])
+            is_overlord, count, trigger = mt.classify_overlord(p)
+            self.assertFalse(is_overlord)
+
     def test_cost_usd_uses_rates_and_prefix_match(self):
         rates = {"claude-sonnet-5": {"input": 2, "cache_write_5m": 2.5, "cache_write_1h": 4, "cache_read": 0.2, "output": 10}}
         row = {"model": "claude-sonnet-5-20260101", "input_tokens": 1_000_000, "cache_write_5m": 0,

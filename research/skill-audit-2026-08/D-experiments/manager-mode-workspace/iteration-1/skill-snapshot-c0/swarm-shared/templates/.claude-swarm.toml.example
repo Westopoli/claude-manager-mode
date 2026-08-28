@@ -1,0 +1,62 @@
+# claude-manager-mode — project config
+# Place at project root. Delete keys to inherit defaults.
+
+spec_dir          = "specs/"
+briefs_dir        = ".swarm/briefs/"  # explicit here; delete this line to get
+                                        # the auto-derived .swarm/<cascade-slug>/briefs/
+                                        # default instead (see config.md)
+type_contract_path = "src/<pkg>/types.py"
+
+umbrella_test_cmd = "pytest tests/umbrella.py"
+graphify_cmd      = ""
+
+parent_owned = [
+  "src/**/types.py",
+  "tests/conftest.py",
+  "tests/umbrella*.py",
+  "tests/integration/**",
+]
+
+# Worktree isolation (Phase 4.1). Untracked dependency trees symlinked into
+# every leaf worktree; untracked files copied in; paths G5 disregards.
+worktree_link    = ["node_modules", ".venv", "venv", "vendor", "target"]
+worktree_copy    = []
+footprint_ignore = [
+  ".git/**", ".swarm/**", "__pycache__/**", "node_modules/**", ".venv/**", "*.pyc",
+  ".pytest_cache/**", ".mypy_cache/**", ".ruff_cache/**", ".coverage", "htmlcov/**", "*.egg-info/**",
+]
+
+[invariants]
+max_impl_lines      = 1000 # ceiling on a leaf Phase 2.2 already judged coherent,
+                            # not a sizing input — raise toward 1500 as needed,
+                            # 2500 is a hard stop (Phase 2.4). See playbook.md Sizing.
+max_test_assertions = 20
+ambiguous_verbs = [
+  "decide", "choose", "design", "determine",
+  "figure out", "resolve", "as appropriate",
+  "use your judgment", "pick", "select an approach",
+]
+
+[complexity]
+max_cyclomatic = 10   # per-function decision-point count (if/elif/for/while/
+                       # except/and/or/ternary, +1 base); SonarQube/CodeClimate
+                       # both default here, NASA JPL Power-of-10 hard-caps at 15
+max_nesting     = 3    # per-function max block depth; 4th level flags, matching
+                       # CodeClimate's nested-control-flow limit and Linux kernel
+                       # style ("more than 3 levels, fix your program")
+
+[scale]
+# G10 growth bands, as the ratio cost(2N)/cost(N). Each sits at the geometric
+# midpoint between the complexity classes it separates, so a class jump fails
+# while ordinary variation does not:
+#   sublinear    O(1)=1.0, O(log n)=1.10 pass; O(n)=2.0 fails
+#   linear_ish   O(n)=2.0 AND O(n log n)=2.20 pass; O(n^2)=4.0 fails
+#   quadratic_ok O(n^2)=4.0 passes; O(n^3)=8.0 fails
+# linear_ish deliberately does not separate O(n) from O(n log n) — they sit
+# 10% apart under doubling, which no measurement resolves reliably.
+sublinear     = 1.5
+linear_ish    = 3.0
+quadratic_ok  = 6.0
+
+[gates]
+extra_spec_gate_cmds = []

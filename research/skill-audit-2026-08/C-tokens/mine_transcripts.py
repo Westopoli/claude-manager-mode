@@ -219,6 +219,38 @@ def mine_agent(jsonl: Path) -> dict:
     }
 
 
+OVERLORD_SKILLS = {"manager-mode", "manager-mode-hardcore"}
+CASCADE_ROLES = {"leaf", "shard-test-writer", "test-auditor", "test-fixer", "adjudicator",
+                  "sweep", "consolidation", "ambiguity", "dep-map"}
+
+
+def classify_overlord(session_path: Path) -> tuple[bool, int, str]:
+    """Return (is_overlord, cascade_task_count, trigger) for a main-session jsonl."""
+    task_role_count = 0
+    trigger = ""
+    for rec in iter_jsonl(session_path):
+        msg = rec.get("message") or {}
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            name = block.get("name")
+            inp = block.get("input") or {}
+            if name == "Skill" and inp.get("skill") in OVERLORD_SKILLS:
+                trigger = trigger or f"skill:{inp.get('skill')}"
+            elif name == "Task":
+                role = classify(inp.get("description", ""), inp.get("prompt", ""))
+                if role in CASCADE_ROLES:
+                    task_role_count += 1
+    if trigger:
+        return True, task_role_count, trigger
+    if task_role_count >= 2:
+        return True, task_role_count, "task_count"
+    return False, task_role_count, ""
+
+
 def load_rates(path: Path) -> dict:
     if not path.exists():
         return {}
@@ -313,6 +345,67 @@ def main() -> int:
     if not rows:
         print("no subagent transcripts found under", root, file=sys.stderr)
         return 1
+
+    # main-session mining: classify overlords, then join to their subagents (agents.csv rows
+    # share (project, session) with the session that spawned them).
+    session_rows: list[dict] = []
+    for jsonl in sorted(root.glob("*/*.jsonl")):
+        project = jsonl.parent.name
+        session = jsonl.stem
+        is_overlord, task_role_count, trigger = classify_overlord(jsonl)
+        if not is_overlord:
+            continue
+        m = mine_agent(jsonl)
+        row = {
+            "project": project,
+            "session": session,
+            "trigger": trigger,
+            "cascade_task_count": task_role_count,
+            "model": m["msg_model"],
+            **m,
+        }
+        row["cost_usd"] = cost_usd(row, rates)
+        row["path"] = str(jsonl)
+        session_rows.append(row)
+
+    if session_rows:
+        sess_fields = list(session_rows[0].keys())
+        with open(out_dir / "sessions.csv", "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=sess_fields)
+            w.writeheader()
+            w.writerows(session_rows)
+
+        sub_by_session: dict[tuple, list[dict]] = collections.defaultdict(list)
+        for r in rows:
+            sub_by_session[(r["project"], r["session"])].append(r)
+
+        cascade_total_rows = []
+        for srow in session_rows:
+            key = (srow["project"], srow["session"])
+            subs = sub_by_session.get(key, [])
+            sub_cost = sum(float(s["cost_usd"]) for s in subs if s["cost_usd"])
+            overlord_cost = float(srow["cost_usd"]) if srow["cost_usd"] else 0.0
+            cascade_total_rows.append({
+                "project": srow["project"],
+                "session": srow["session"],
+                "trigger": srow["trigger"],
+                "overlord_model": srow["model"],
+                "overlord_turns": srow["turns"],
+                "overlord_fresh_tokens": srow["fresh_tokens"],
+                "overlord_cache_read_tokens": srow["cache_read_tokens"],
+                "overlord_output_tokens": srow["output_tokens"],
+                "overlord_cost_usd": round(overlord_cost, 2),
+                "n_subagents": len(subs),
+                "subagents_cost_usd": round(sub_cost, 2),
+                "total_cost_usd": round(overlord_cost + sub_cost, 2),
+                "overlord_pct_of_total": round(100 * overlord_cost / (overlord_cost + sub_cost), 1) if (overlord_cost + sub_cost) else "",
+            })
+        with open(out_dir / "by_cascade_total.csv", "w", newline="") as fh:
+            w = csv.DictWriter(fh, fieldnames=list(cascade_total_rows[0].keys())) if cascade_total_rows else None
+            if w:
+                w.writeheader()
+                w.writerows(cascade_total_rows)
+        print(f"{len(session_rows)} overlord sessions → {out_dir}/sessions.csv, {out_dir}/by_cascade_total.csv")
 
     fields = list(rows[0].keys())
     with open(out_dir / "agents.csv", "w", newline="") as fh:
