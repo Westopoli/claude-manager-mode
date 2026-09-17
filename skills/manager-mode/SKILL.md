@@ -13,9 +13,10 @@ The cascade prevents three structural failures in parallel-agent TDD: (1) leaves
 
 Resolve `SWARM_SHARED_DIR` once before using a shared asset. In Claude Code, use
 `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/swarm-shared`; in Codex, use
-`${CODEX_HOME:-$HOME/.codex}/skills/swarm-shared`. Choose the directory belonging to
-the client running this skill, and verify it exists before continuing. Every
-shared-asset path below is relative to `SWARM_SHARED_DIR`.
+`${CODEX_HOME:-$HOME/.codex}/skills/swarm-shared`; in Antigravity, use
+`${GEMINI_CONFIG_DIR:-$HOME/.gemini}/config/skills/swarm-shared`. Choose the directory
+belonging to the client running this skill, and verify it exists before continuing.
+Every shared-asset path below is relative to `SWARM_SHARED_DIR`.
 
 Theory: `$SWARM_SHARED_DIR/references/playbook.md`. Brief template:
 `$SWARM_SHARED_DIR/references/brief-template.md`. Config schema:
@@ -423,7 +424,7 @@ Note the deliberate asymmetry with 2.6, which puts original test *authoring* on 
 
 ## Phase 4 — Spawn leaves
 
-After Phase 3 reports `all PASS`: take the wave base commit (4.0), create one worktree per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 4.6 (`model: "claude-sonnet-4-6"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`. Dispatch the whole wave together, not sequentially.
+After Phase 3 reports `all PASS`: take the wave base commit (4.0), create one worktree per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 4.6 (`model: "claude-sonnet-4-6"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`; Antigravity delegates to its native subagent dispatch, routed by description match to the `swarm-leaf` subagent definition (`$SWARM_SHARED_DIR/agents/antigravity/swarm-leaf.md`). Dispatch the whole wave together, not sequentially.
 
 ### 4.0 Wave base commit
 
@@ -533,6 +534,8 @@ This picks the *tool profile* (`subagent_type`), not the model — every impl le
 - **`caveman:cavecrew-investigator`** — not used for impl leaves (it's read-only), but reach for it inline during Phase 2/3 if you need a quick file-locator pass without burning overlord context.
 
 This is a hint, not a hard rule. The brief's footprint discipline is the actual safety net; the choice of sub-agent type is performance optimization. If a `cavecrew-builder` leaf hard-refuses mid-spawn, or reports it could not execute its own tests, re-spawn that one leaf as `general-purpose` — don't downgrade the whole wave.
+
+**Antigravity** has no `subagent_type`/tool-profile selection and no `cavecrew-*` equivalent — those are Claude-Code-specific caveman-skill agents, out of scope for this port. Every leaf dispatches through the one generic `swarm-leaf` subagent definition (full tool access, `model: inherit`); role differentiation (impl leaf, shard-test-writer, test-fixer, test-auditor) comes entirely from the prompt content each spawn call passes, same as `general-purpose` already does for Claude Code and Codex.
 
 ### 4.4 Wait for all leaves to report
 
@@ -751,6 +754,8 @@ python "$SWARM_SHARED_DIR/scripts/cascade_metrics.py" --cascade <cascade-slug> -
 ```
 
 It reads the local Claude Code transcripts for this cascade's window (first `git-ops.log` line → now), attributes tokens and $ to the overlord and to each sub-agent role (deduped by `message.id`, priced from `rates.json`), joins the cascade's own artifacts (gate rows, audit severities and rounds, log rows, questions/proposals, sweep flags), and writes `.swarm/<cascade-slug>/METRICS.{md,json}` plus a copy in `~/.claude/swarm-metrics/` that survives a gitignored `.swarm/`. Pass `--variant` when a skill variant is under test so runs can be compared later. Surface only its summary line; the cost line below comes from it. Exit 1 means it recorded with a gap (named on stderr) — say so in the report, do not hand-fill numbers. Why this runs every time: the 2026-08 audit found the overlord chat is ~78% of a cascade's cost and had never been measured, because nothing recorded it at the time.
+
+This step reads Claude Code's own transcript format only — it already skips cost accounting for Codex, and skips it identically for Antigravity, since neither client's session log is integrated. Report the rest of Phase 7.2 normally and note "cost: unavailable (non-Claude-Code client)" in place of the cost line.
 
 Print to the user:
 

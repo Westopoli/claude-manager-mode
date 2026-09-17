@@ -15,16 +15,18 @@ assert_contains() { [[ "$1" == *"$2"* ]] || fail "expected output to contain: $2
 
 run_case() {
   local name="$1" clients="$2" args="$3"
-  local case_root mock_bin claude_home codex_home
+  local case_root mock_bin claude_home codex_home gemini_home
   case_root="$TEST_ROOT/$name"
   mock_bin="$case_root/bin"
   claude_home="$case_root/claude"
   codex_home="$case_root/codex"
+  gemini_home="$case_root/gemini"
   mkdir -p "$mock_bin"
   if [[ "$clients" == *claude* ]]; then printf '#!/bin/sh\n' > "$mock_bin/claude"; chmod +x "$mock_bin/claude"; fi
   if [[ "$clients" == *codex* ]]; then printf '#!/bin/sh\n' > "$mock_bin/codex"; chmod +x "$mock_bin/codex"; fi
-  CASE_CLAUDE_HOME="$claude_home" CASE_CODEX_HOME="$codex_home" \
-    CASE_OUTPUT="$(HOME="$case_root/home" CLAUDE_CONFIG_DIR="$claude_home" CODEX_HOME="$codex_home" PATH="$mock_bin:$BASE_PATH" bash "$INSTALLER" $args)"
+  if [[ "$clients" == *antigravity* ]]; then printf '#!/bin/sh\n' > "$mock_bin/antigravity"; chmod +x "$mock_bin/antigravity"; fi
+  CASE_CLAUDE_HOME="$claude_home" CASE_CODEX_HOME="$codex_home" CASE_GEMINI_HOME="$gemini_home" \
+    CASE_OUTPUT="$(HOME="$case_root/home" CLAUDE_CONFIG_DIR="$claude_home" CODEX_HOME="$codex_home" GEMINI_CONFIG_DIR="$gemini_home" PATH="$mock_bin:$BASE_PATH" bash "$INSTALLER" $args)"
 }
 
 run_case claude_only claude ""
@@ -58,6 +60,31 @@ assert_missing "$CASE_CODEX_HOME/skills"
 run_case list claude "--list"
 assert_contains "$CASE_OUTPUT" "Claude Code: detected"
 assert_missing "$CASE_CLAUDE_HOME/skills"
+
+run_case antigravity_only antigravity ""
+assert_exists "$CASE_GEMINI_HOME/config/skills/manager-mode/SKILL.md"
+assert_exists "$CASE_GEMINI_HOME/config/skills/manager-mode-hardcore/SKILL.md"
+assert_exists "$CASE_GEMINI_HOME/config/skills/swarm-shared/SKILL.md"
+assert_exists "$CASE_GEMINI_HOME/config/agents/swarm-leaf.md"
+assert_missing "$CASE_CLAUDE_HOME/skills"
+assert_missing "$CASE_CODEX_HOME/skills"
+
+run_case only_antigravity "claude codex antigravity" "--only antigravity"
+assert_missing "$CASE_CLAUDE_HOME/skills"
+assert_missing "$CASE_CODEX_HOME/skills"
+assert_exists "$CASE_GEMINI_HOME/config/skills/manager-mode/SKILL.md"
+assert_exists "$CASE_GEMINI_HOME/config/agents/swarm-leaf.md"
+
+run_case triple "claude codex antigravity" ""
+assert_exists "$CASE_CLAUDE_HOME/skills/manager-mode/SKILL.md"
+assert_exists "$CASE_CODEX_HOME/skills/manager-mode/SKILL.md"
+assert_exists "$CASE_GEMINI_HOME/config/skills/manager-mode/SKILL.md"
+assert_exists "$CASE_GEMINI_HOME/config/agents/swarm-leaf.md"
+
+run_case antigravity_dry_run antigravity "--dry-run"
+assert_contains "$CASE_OUTPUT" "Would install"
+assert_contains "$CASE_OUTPUT" "swarm-leaf subagent"
+assert_missing "$CASE_GEMINI_HOME/config/skills"
 
 run_case no_client "" ""
 assert_contains "$CASE_OUTPUT" "No supported clients detected"

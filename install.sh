@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# manager-mode installer for Claude Code and Codex.
+# manager-mode installer for Claude Code, Codex, and Antigravity.
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/Westopoli/claude-manager-mode/main/install.sh | bash
-#   ./install.sh [--only claude|codex] [--dry-run] [--list] [--check]
+#   ./install.sh [--only claude|codex|antigravity] [--dry-run] [--list] [--check]
 #                [--accounts-root DIR] [--no-accounts]
 
 set -euo pipefail
@@ -21,7 +21,7 @@ TMP=""
 
 usage() {
   cat <<'EOF'
-Usage: install.sh [--only claude|codex] [--dry-run] [--list] [--check]
+Usage: install.sh [--only claude|codex|antigravity] [--dry-run] [--list] [--check]
                   [--accounts-root DIR] [--no-accounts]
 
 Installs manager-mode, manager-mode-hardcore, and swarm-shared into every
@@ -31,12 +31,15 @@ Targets:
   $CLAUDE_CONFIG_DIR (or ~/.claude)   primary Claude Code config
   ~/claude-accounts/*/.claude         additional Claude Code accounts
   $CODEX_HOME (or ~/.codex)           Codex
+  $GEMINI_CONFIG_DIR (or ~/.gemini)   Antigravity (also installs the
+                                      swarm-leaf subagent definition into
+                                      <target>/config/agents/)
 
 Options:
   --list           show detected targets and their installed versions, then exit
   --check          compare each target against this source; exit 1 on drift
   --dry-run        show what would be installed, change nothing
-  --only C         restrict to claude or codex
+  --only C         restrict to claude, codex, or antigravity
   --accounts-root  where to look for additional accounts (default ~/claude-accounts)
   --no-accounts    primary config dir only; skip additional accounts
 EOF
@@ -45,9 +48,9 @@ EOF
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --only)
-      [[ $# -ge 2 ]] || { echo "--only requires claude or codex" >&2; exit 2; }
+      [[ $# -ge 2 ]] || { echo "--only requires claude, codex, or antigravity" >&2; exit 2; }
       ONLY="$2"
-      [[ "$ONLY" == "claude" || "$ONLY" == "codex" ]] || { echo "--only must be claude or codex" >&2; exit 2; }
+      [[ "$ONLY" == "claude" || "$ONLY" == "codex" || "$ONLY" == "antigravity" ]] || { echo "--only must be claude, codex, or antigravity" >&2; exit 2; }
       shift 2 ;;
     --dry-run) DRY_RUN=true; shift ;;
     --list) LIST=true; shift ;;
@@ -63,6 +66,7 @@ done
 
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-${HOME}/.claude}"
 CODEX_CONFIG_HOME="${CODEX_HOME:-${HOME}/.codex}"
+GEMINI_CONFIG_HOME="${GEMINI_CONFIG_DIR:-${HOME}/.gemini}"
 
 has_command() { command -v "$1" >/dev/null 2>&1; }
 detect_client() {
@@ -107,6 +111,7 @@ collect_claude_homes
 
 CLAUDE_DETECTED=false
 CODEX_DETECTED=false
+ANTIGRAVITY_DETECTED=false
 # An account dir that exists is itself the evidence — the `claude` binary is
 # shared across accounts, so per-account command detection says nothing.
 [[ ${#CLAUDE_HOMES[@]} -gt 0 ]] && CLAUDE_DETECTED=true
@@ -116,6 +121,7 @@ if [[ ${#CLAUDE_HOMES[@]} -eq 0 ]] && detect_client claude "$CLAUDE_HOME"; then
   CLAUDE_DETECTED=true
 fi
 detect_client codex "$CODEX_CONFIG_HOME" && CODEX_DETECTED=true
+{ has_command antigravity || has_command agy || [[ -d "$GEMINI_CONFIG_HOME" ]]; } && ANTIGRAVITY_DETECTED=true
 
 # ---- version stamping ----
 # Each installed skill dir carries a VERSION file so drift is detectable
@@ -144,6 +150,8 @@ print_detection() {
     "$([[ ${#CLAUDE_HOMES[@]} -gt 0 ]] && printf '%s' "${CLAUDE_HOMES[*]}" || printf '%s' "$CLAUDE_HOME")"
   printf 'Codex:       %s (%s)\n' \
     "$([[ "$CODEX_DETECTED" == true ]] && echo detected || echo not\ detected)" "$CODEX_CONFIG_HOME"
+  printf 'Antigravity: %s (%s)\n' \
+    "$([[ "$ANTIGRAVITY_DETECTED" == true ]] && echo detected || echo not\ detected)" "$GEMINI_CONFIG_HOME/config"
 }
 
 TARGETS=()
@@ -151,6 +159,7 @@ if selected_client claude && "$CLAUDE_DETECTED"; then
   for home in "${CLAUDE_HOMES[@]}"; do TARGETS+=("claude:$home/skills"); done
 fi
 if selected_client codex && "$CODEX_DETECTED"; then TARGETS+=("codex:$CODEX_CONFIG_HOME/skills"); fi
+if selected_client antigravity && "$ANTIGRAVITY_DETECTED"; then TARGETS+=("antigravity:$GEMINI_CONFIG_HOME/config/skills"); fi
 
 if [[ ${#TARGETS[@]} -eq 0 ]]; then
   if [[ -n "$ONLY" ]]; then
@@ -229,6 +238,9 @@ if "$DRY_RUN"; then
   for target in "${TARGETS[@]}"; do
     IFS=: read -r client destination <<<"$target"
     echo "Would install ${SKILLS[*]} for $client into $destination"
+    if [[ "$client" == "antigravity" ]]; then
+      echo "Would install swarm-leaf subagent for $client into $(dirname "$destination")/agents/swarm-leaf.md"
+    fi
   done
   exit 0
 fi
@@ -299,6 +311,12 @@ for target in "${TARGETS[@]}"; do
     cp -R "$STAGE_ROOT/skills/$skill" "$dest"
     echo "  $skill: installed"
   done
+  if [[ "$client" == "antigravity" ]]; then
+    agents_dir="$(dirname "$skills_dir")/agents"
+    mkdir -p "$agents_dir"
+    cp "$SRC/swarm-shared/agents/antigravity/swarm-leaf.md" "$agents_dir/swarm-leaf.md"
+    echo "  swarm-leaf: installed into $agents_dir"
+  fi
 done
 
 echo

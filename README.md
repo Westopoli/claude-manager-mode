@@ -1,14 +1,14 @@
 # manager-mode
 
-> Disciplined parallel-agent TDD for Claude Code and Codex. One north-star test, many sub-tasks, zero drift.
+> Disciplined parallel-agent TDD for Claude Code, Codex, and Antigravity. One north-star test, many sub-tasks, zero drift.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
-![Claude Code + Codex](https://img.shields.io/badge/Claude%20Code%20%2B%20Codex-skill-D97757)
+![Claude Code + Codex + Antigravity](https://img.shields.io/badge/Claude%20Code%20%2B%20Codex%20%2B%20Antigravity-skill-D97757)
 ![Status](https://img.shields.io/badge/status-v1.1-green)
 
 [Why TDD + AI](#why-tdd-for-ai-agents) • [Before / After](#before--after) • [Benchmarks](#benchmarks) • [What you get](#what-you-get) • [How it works](#how-it-works) • [Install](#install) • [Config](#config)
 
-A skill pack for Claude Code and Codex that lets you run many AI sub-agents in parallel without the usual failure modes: overlapping file edits, silent design decisions, oversized tasks, regressions slipping past admission.
+A skill pack for Claude Code, Codex, and Antigravity that lets you run many AI sub-agents in parallel without the usual failure modes: overlapping file edits, silent design decisions, oversized tasks, regressions slipping past admission.
 
 One slash command. Eight phases. A dozen layered gates. One tree-shaped cascade.
 
@@ -131,7 +131,7 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 2. **Lite-discovery (Phase 1).** Fires only for missing inputs. One-question drafts per artifact — spec, type contract, failing umbrella test. The spec carries a Bible Compliance footer (cites your source-of-truth doc + lists deliberate divergences). No `.UNSTATED.md` ceremony.
 3. **Decompose (Phase 2).** Reads spec + contract, emits one brief per sub-agent at `<briefs_dir>/leaf-NN.md`. A separate shard-test-writer — never the overlord — authors the failing test for each brief; leaves only write impl. Refuses to emit more than 16 leaves in one wave. Every test file begins with a `# spec: <path>::<section>::AC-<N>` header (Spec Link Rule).
 4. **Audit (Phase 3).** Runs `check_invariants.py`. Any FAIL → fix the brief and re-run. No spawn until PASS.
-5. **Spawn (Phase 4).** Commit the Phase 1–3 artifacts as the wave base (with your OK), then give each leaf its own git worktree on `swarm/<slug>/leaf-NN` and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`). Each leaf edits its impl files in place inside its worktree — never running git — and confirms RED→GREEN for real. Because your checkout is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
+5. **Spawn (Phase 4).** Commit the Phase 1–3 artifacts as the wave base (with your OK), then give each leaf its own git worktree on `swarm/<slug>/leaf-NN` and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`, Antigravity dispatches through its native subagent routing to the shipped `swarm-leaf` definition). Each leaf edits its impl files in place inside its worktree — never running git — and confirms RED→GREEN for real. Because your checkout is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
 6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green, then commit each leaf's declared files from its worktree onto its branch (`worktree_ops.py commit` refuses on any undeclared write or any sign the leaf ran git). Run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
 7. **Admission loop (Phase 6).** Per leaf: G1–G10 gates → file-match → umbrella pre/post → admit-or-revert. G5 diffs the leaf's commit against the wave base, so any write outside its declared footprint blocks. Admission is a `--no-ff` merge into `swarm/<slug>/integration`; revert is a `reset --hard` there, with the leaf's commit kept on a `reverted/` branch for forensics. Your own branch is written only by the confirmed base commit and the confirmed final fast-forward. Append-only `post-review-log.md` (now with leaf/merge shas) plus a per-leaf `GATES.md` — the log records an admission, the evidence file records that the gates actually ran.
 8. **Report + evidence audit (Phases 7–8).** Counts of admitted/reverted/escalated and apex status, followed by parallel evidence audits in deterministic ≤3-leaf batches. The overlord records accepted/denied findings and verifies any confirmed in-footprint repair with affected tests and the configured full suite.
@@ -174,7 +174,9 @@ Every safety net is a numbered gate. Each runs at a specific point in the workfl
 
 ## Install
 
-One command detects Claude Code and Codex and installs the versioned `manager-mode`, `manager-mode-hardcore`, and `swarm-shared` skills into every detected client — machine-wide, including every Claude Code account under `~/claude-accounts/*/.claude`, not just whichever one `CLAUDE_CONFIG_DIR` currently points at.
+One command detects Claude Code, Codex, and Antigravity, and installs the versioned `manager-mode`, `manager-mode-hardcore`, and `swarm-shared` skills into every detected client — machine-wide, including every Claude Code account under `~/claude-accounts/*/.claude`, not just whichever one `CLAUDE_CONFIG_DIR` currently points at. For Antigravity it also installs the `swarm-leaf` subagent definition every leaf dispatch routes through.
+
+Antigravity support is best-effort against its current (thin) public docs — its Agent-Skills and subagent-dispatch conventions are what this integrates against, sanity-check `/manager-mode` once you have Antigravity installed.
 
 **macOS / Linux**
 ```bash
@@ -195,7 +197,7 @@ irm https://raw.githubusercontent.com/Westopoli/claude-manager-mode/main/install
 
 Each installed skill directory carries a `VERSION` stamp (source commit + install date). Without it, a stale install is undetectable from inside a session: the skill loads and reads as authoritative while quietly running rules that were changed or removed from source, possibly months earlier.
 
-Flags: `--no-accounts` restricts to the primary config dir, `--accounts-root DIR` looks for accounts somewhere other than `~/claude-accounts`, `--only claude|codex` restricts by client.
+Flags: `--no-accounts` restricts to the primary config dir, `--accounts-root DIR` looks for accounts somewhere other than `~/claude-accounts`, `--only claude|codex|antigravity` restricts by client.
 
 ### Manual install
 
@@ -219,6 +221,7 @@ cd claude-manager-mode
 ./install.sh --list                 # show detected clients and their config homes
 ./install.sh --only claude          # install only for Claude Code
 ./install.sh --only codex           # install only for Codex
+./install.sh --only antigravity     # install only for Antigravity
 ./install.sh --dry-run              # show targets without changing them
 ```
 
@@ -226,11 +229,12 @@ cd claude-manager-mode
 .\install.ps1 -List
 .\install.ps1 -Only claude
 .\install.ps1 -Only codex -DryRun
+.\install.ps1 -Only antigravity
 ```
 
-Claude Code is detected when its `claude` executable is on `PATH` or its config home exists; Codex follows the same rule for `codex`. The target directories are `${CLAUDE_CONFIG_DIR:-~/.claude}/skills` and `${CODEX_HOME:-~/.codex}/skills` (PowerShell uses the same environment variables, falling back to the user's home directory). If neither client is present, the installer exits successfully without changing anything.
+Claude Code is detected when its `claude` executable is on `PATH` or its config home exists; Codex follows the same rule for `codex`; Antigravity follows the same rule for `antigravity`/`agy`. The target directories are `${CLAUDE_CONFIG_DIR:-~/.claude}/skills`, `${CODEX_HOME:-~/.codex}/skills`, and `${GEMINI_CONFIG_DIR:-~/.gemini}/config/skills` (PowerShell uses the same environment variables, falling back to the user's home directory). Antigravity additionally gets the `swarm-leaf` subagent definition copied to `${GEMINI_CONFIG_DIR:-~/.gemini}/config/agents/swarm-leaf.md`. If no client is present, the installer exits successfully without changing anything.
 
-Before an update, existing installed and legacy skill directories are renamed with a timestamped `.bak.*` suffix. The installer validates and stages all required skills before it changes a target. Restart Claude Code after installing. For Codex, restart or refresh the Codex CLI or the local Codex surface in the ChatGPT desktop app, then invoke `/manager-mode` or `/manager-mode-hardcore`. A shell installer cannot add skills to ordinary hosted ChatGPT chats.
+Before an update, existing installed and legacy skill directories are renamed with a timestamped `.bak.*` suffix. The installer validates and stages all required skills before it changes a target. Restart Claude Code after installing. For Codex, restart or refresh the Codex CLI or the local Codex surface in the ChatGPT desktop app, then invoke `/manager-mode` or `/manager-mode-hardcore`. A shell installer cannot add skills to ordinary hosted ChatGPT chats. For Antigravity, restart or refresh the IDE/CLI so it rescans `~/.gemini/config/skills` and `~/.gemini/config/agents`, then invoke the skill the same way.
 
 ### Uninstall
 
@@ -238,12 +242,16 @@ Before an update, existing installed and legacy skill directories are renamed wi
 # macOS / Linux
 rm -rf ~/.claude/skills/{manager-mode,manager-mode-hardcore,swarm-shared}
 rm -rf ~/.codex/skills/{manager-mode,manager-mode-hardcore,swarm-shared}
+rm -rf ~/.gemini/config/skills/{manager-mode,manager-mode-hardcore,swarm-shared}
+rm -f ~/.gemini/config/agents/swarm-leaf.md
 ```
 
 ```powershell
 # Windows
 Remove-Item -Recurse -Force $env:USERPROFILE\.claude\skills\manager-mode, $env:USERPROFILE\.claude\skills\manager-mode-hardcore, $env:USERPROFILE\.claude\skills\swarm-shared
 Remove-Item -Recurse -Force $env:USERPROFILE\.codex\skills\manager-mode, $env:USERPROFILE\.codex\skills\manager-mode-hardcore, $env:USERPROFILE\.codex\skills\swarm-shared
+Remove-Item -Recurse -Force $env:USERPROFILE\.gemini\config\skills\manager-mode, $env:USERPROFILE\.gemini\config\skills\manager-mode-hardcore, $env:USERPROFILE\.gemini\config\skills\swarm-shared
+Remove-Item -Force $env:USERPROFILE\.gemini\config\agents\swarm-leaf.md
 ```
 
 ## Config

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("claude", "codex")]
+    [ValidateSet("claude", "codex", "antigravity")]
     [string]$Only,
     [switch]$DryRun,
     [switch]$List
@@ -12,15 +12,21 @@ $Skills = @("manager-mode", "manager-mode-hardcore", "swarm-shared")
 $Legacy = @("swarm", "swarm-spawn", "swarm-review", "swarm-post-review", "swarm-merge")
 $claudeHome = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Path $HOME ".claude" }
 $codexHome = if ($env:CODEX_HOME) { $env:CODEX_HOME } else { Join-Path $HOME ".codex" }
+$geminiHome = if ($env:GEMINI_CONFIG_DIR) { $env:GEMINI_CONFIG_DIR } else { Join-Path $HOME ".gemini" }
 
 function Test-Client([string]$CommandName, [string]$ConfigHome) {
     return $null -ne (Get-Command $CommandName -ErrorAction SilentlyContinue) -or (Test-Path -Path $ConfigHome -PathType Container)
 }
+function Test-Antigravity([string]$ConfigHome) {
+    return ($null -ne (Get-Command "antigravity" -ErrorAction SilentlyContinue)) -or ($null -ne (Get-Command "agy" -ErrorAction SilentlyContinue)) -or (Test-Path -Path $ConfigHome -PathType Container)
+}
 function Show-Detection {
     $claudeState = if ($claudeDetected) { "detected" } else { "not detected" }
     $codexState = if ($codexDetected) { "detected" } else { "not detected" }
+    $antigravityState = if ($antigravityDetected) { "detected" } else { "not detected" }
     Write-Output "Claude Code: $claudeState ($claudeHome)"
     Write-Output "Codex:       $codexState ($codexHome)"
+    Write-Output "Antigravity: $antigravityState ($geminiHome\config)"
 }
 function Get-BackupPath([string]$Path) {
     $timestamp = Get-Date -Format "yyyyMMddHHmmss"
@@ -35,11 +41,13 @@ function Get-BackupPath([string]$Path) {
 
 $claudeDetected = Test-Client "claude" $claudeHome
 $codexDetected = Test-Client "codex" $codexHome
+$antigravityDetected = Test-Antigravity $geminiHome
 if ($List) { Show-Detection; exit 0 }
 
 $targets = @()
 if ((-not $Only -or $Only -eq "claude") -and $claudeDetected) { $targets += @{ Name = "claude"; SkillsDir = (Join-Path $claudeHome "skills") } }
 if ((-not $Only -or $Only -eq "codex") -and $codexDetected) { $targets += @{ Name = "codex"; SkillsDir = (Join-Path $codexHome "skills") } }
+if ((-not $Only -or $Only -eq "antigravity") -and $antigravityDetected) { $targets += @{ Name = "antigravity"; SkillsDir = (Join-Path $geminiHome "config\skills") } }
 if ($targets.Count -eq 0) {
     if ($Only) { Write-Output "Requested client '$Only' was not detected; nothing installed." }
     else { Write-Output "No supported clients detected; nothing installed." }
@@ -66,7 +74,13 @@ try {
     }
     if ($DryRun) {
         Write-Output "Dry run: source $sourceLabel"
-        foreach ($target in $targets) { Write-Output "Would install $($Skills -join ', ') for $($target.Name) into $($target.SkillsDir)" }
+        foreach ($target in $targets) {
+            Write-Output "Would install $($Skills -join ', ') for $($target.Name) into $($target.SkillsDir)"
+            if ($target.Name -eq "antigravity") {
+                $agentsDir = Join-Path (Split-Path -Parent $target.SkillsDir) "agents"
+                Write-Output "Would install swarm-leaf subagent for $($target.Name) into $agentsDir\swarm-leaf.md"
+            }
+        }
         exit 0
     }
     $stageRoot = Join-Path ([System.IO.Path]::GetTempPath()) "manager-mode-stage-$([System.IO.Path]::GetRandomFileName())"
@@ -93,6 +107,12 @@ try {
             }
             Copy-Item -Recurse -Path (Join-Path $stageSkills $skill) -Destination $dest
             Write-Output "  $skill: installed"
+        }
+        if ($target.Name -eq "antigravity") {
+            $agentsDir = Join-Path (Split-Path -Parent $target.SkillsDir) "agents"
+            New-Item -ItemType Directory -Force -Path $agentsDir | Out-Null
+            Copy-Item -Path (Join-Path $src "swarm-shared\agents\antigravity\swarm-leaf.md") -Destination (Join-Path $agentsDir "swarm-leaf.md") -Force
+            Write-Output "  swarm-leaf: installed into $agentsDir"
         }
     }
     Write-Output "Done. Restart or refresh each installed client, then invoke /manager-mode."
