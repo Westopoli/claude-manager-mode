@@ -31,7 +31,7 @@ Records live under the cascade's own directory, per `/manager-mode`'s canonical 
 
 ### 3.4.1 (hardcore) Two independent test-auditors
 
-Spawn two fresh-context auditors per shard in parallel, and dispatch shards in parallel (shards already don't share footprint). Neither auditor may see the other's prompt, report, reasoning, or findings. Use `caveman:cavecrew-reviewer` where available; otherwise a fresh `general-purpose` reviewer with the same adversarial instruction.
+Spawn two fresh-context auditors per shard in parallel, and dispatch shards in parallel (shards already don't share footprint). Neither auditor may see the other's prompt, report, reasoning, or findings. Pass `model: "claude-sonnet-5-5"` on both spawn calls (all roles run on Sonnet 5.5 — see base `/manager-mode` "Model defaults"; the doubled audit plus adjudication is what covers the judgement risk). Use `caveman:cavecrew-reviewer` where available; otherwise a fresh `general-purpose` reviewer with the same adversarial instruction.
 
 Both receive only `TEST-AUDIT-BRIEF.md` and the tests under audit. They never edit files. Posture and report requirements are identical to base 3.4.2's three checks (goal fidelity, umbrella alignment, test quality), with the same evidence requirement: every finding needs a quote from the test, the umbrella, or the spec.
 
@@ -41,9 +41,9 @@ If either report is missing, malformed, or arrives after the configured wait/ret
 
 ### 3.4.2 (hardcore) Adjudication
 
-Only after both reports exist, spawn a third fresh-context reviewer. Give it `TEST-AUDIT-BRIEF.md`, both reports, the tests under audit, and the umbrella/spec/contract excerpts. It independently evaluates **every** claim from both auditors — does not trust either just because they agree.
+Only after both reports exist, spawn a third fresh-context reviewer. Pass `model: "claude-sonnet-5-5"` on the spawn call. Give it `TEST-AUDIT-BRIEF.md`, both reports, the tests under audit, and the umbrella/spec/contract excerpts. It independently evaluates **every** claim from both auditors — does not trust either just because they agree.
 
-For every claim it records `CONFIRMED`, `DENIED`, or `UNVERIFIED`, plus its own source/spec citation and rationale. It does not implement anything — this is still pre-impl, there is no code to repair yet, only the test. If any claim resolves `CONFIRMED` at 🔴/🟡 severity, the shard's tests are **not** audit-clean: a fresh spawn revises the flagged test(s) — base 3.4.3's sizing applies, so a verbatim-quoted one-line fix may be applied by the overlord and anything larger goes to a Sonnet test-fixer — confirms RED again, and 3.4.1–3.4.2 re-run in full — both auditors again, not just a re-check of the fixed line, since a fix can introduce a new problem the first pass didn't have a reason to look for.
+For every claim it records `CONFIRMED`, `DENIED`, or `UNVERIFIED`, plus its own source/spec citation and rationale. It does not implement anything — this is still pre-impl, there is no code to repair yet, only the test. If any claim resolves `CONFIRMED` at 🔴/🟡 severity, the shard's tests are **not** audit-clean: a fresh spawn revises the flagged test(s) — base 3.4.3's sizing applies, so a verbatim-quoted one-line fix may be applied by the overlord and anything larger goes to a test-fixer (`model: "claude-sonnet-5-5"`) — confirms RED again, and 3.4.1–3.4.2 re-run in full — both auditors again, not just a re-check of the fixed line, since a fix can introduce a new problem the first pass didn't have a reason to look for.
 
 The adjudicator writes its verdict to `TEST-AUDIT-ADJUDICATION.md` in the shard's audit directory.
 

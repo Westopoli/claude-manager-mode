@@ -182,12 +182,13 @@ class ManagerModeContractTests(unittest.TestCase):
             self.assertNotIn(token, REGULAR, token)
 
     def test_model_tiers_are_pinned_per_role(self) -> None:
-        """Leaves must not silently inherit the overlord's model."""
-        required = (
-            "Opus 5", "Sonnet 4.6", 'model: "opus"', 'model: "claude-sonnet-4-6"',
-        )
+        """Every role runs on Sonnet 5.5, pinned by explicit id (no aliases, no inheritance)."""
+        required = ("Sonnet 5.5", 'model: "claude-sonnet-5-5"')
         for token in required:
             self.assertIn(token, REGULAR, token)
+        for token in ("Opus 5", "Sonnet 4.6", 'model: "opus"', 'model: "sonnet"',
+                      'model: "claude-sonnet-4-6"'):
+            self.assertNotIn(token, REGULAR, token)
 
     def test_scale_and_boundary_chain_is_wired_end_to_end(self) -> None:
         """Each link exists in the phase that owns it.

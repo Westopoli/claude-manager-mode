@@ -254,6 +254,23 @@ Remove-Item -Recurse -Force $env:USERPROFILE\.gemini\config\skills\manager-mode,
 Remove-Item -Force $env:USERPROFILE\.gemini\config\agents\swarm-leaf.md
 ```
 
+## Models
+
+Every role runs on Claude Sonnet 5.5 (`claude-sonnet-5-5`), pinned by explicit id on each spawn call so resumed sessions do not drift to another model.
+
+| Role | Model |
+|---|---|
+| Overlord (the chat running `/manager-mode`) | Sonnet 5.5 |
+| Shard-test-writer | Sonnet 5.5 |
+| Leaf implementers | Sonnet 5.5 |
+| Test-fixer | Sonnet 5.5 |
+| Test-quality auditors (hardcore: two auditors plus the adjudicator) | Sonnet 5.5 |
+| Delegated drafting passes (dependency map, consolidation, ambiguity resolution) | Sonnet 5.5 |
+
+The Antigravity `swarm-leaf` definition keeps `model: inherit`: Antigravity picks its own model, and the skill does not override it.
+
+**2026-10-21.** All roles default to Claude Sonnet 5.5 (overlord, shard-test-writer, leaves, test-fixer, auditors, adjudicator, drafting passes). Rationale: the overlord's and test-writer's judgement work is covered by the spec, contract and umbrella test written before the cascade, and in hardcore by the doubled audit; leaf work is bounded by design. Previously: Opus 5 for overlord and shard-test-writer, Sonnet 5 for auditors, Sonnet 4.6 for leaves, test-fixer and drafting passes.
+
 ## Config
 
 Optional. Drop a `.claude-swarm.toml` at your repo root to point Manager Mode at your test command and project layout:
