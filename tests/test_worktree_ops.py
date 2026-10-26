@@ -353,6 +353,38 @@ class WorktreeOpsTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("leaf-01", r.stdout)
 
+    # ---- scratch worktrees (Phase 3.5)
+    def test_scratch_overlays_dirty_and_untracked_but_not_swarm(self) -> None:
+        (self.root / "src/contract.py").write_text("def build():\n    return 'dirty'\n")
+        (self.root / "tests/test_new.py").write_text("# new\n")
+        r = ops(self.root, "scratch", "add", "--slug", "demo", "--name", "sabotage-default")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("overlaid 2", r.stdout)
+        wt = self.cdir / "worktrees/sabotage-default"
+        self.assertIn("dirty", (wt / "src/contract.py").read_text())
+        self.assertTrue((wt / "tests/test_new.py").is_file())
+        self.assertFalse((wt / ".swarm").exists())
+
+    def test_scratch_status_preflight_and_remove(self) -> None:
+        self.assertEqual(ops(self.root, "scratch", "add", "--slug", "demo", "--name", "sabotage-a").returncode, 0)
+        self.assertIn("scratch-worktree", ops(self.root, "status", "--slug", "demo").stdout)
+        r = ops(self.root, "preflight", "--slug", "demo")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("leftover", r.stderr)
+        self.assertEqual(ops(self.root, "scratch", "remove", "--slug", "demo", "--name", "sabotage-a").returncode, 0)
+        self.assertEqual(ops(self.root, "scratch", "remove", "--slug", "demo", "--name", "sabotage-a").returncode, 0)
+        self.assertEqual(ops(self.root, "status", "--slug", "demo").stdout.strip().splitlines()[-1].strip(), "(none)")
+        self.assertEqual(ops(self.root, "preflight", "--slug", "demo").returncode, 0)
+
+    def test_scratch_refuses_non_sabotage_name(self) -> None:
+        r = ops(self.root, "scratch", "add", "--slug", "demo", "--name", "leaf-01")
+        self.assertEqual(r.returncode, 1)
+
+    def test_cleanup_removes_scratch_without_purge(self) -> None:
+        ops(self.root, "scratch", "add", "--slug", "demo", "--name", "sabotage-a")
+        self.assertEqual(ops(self.root, "cleanup", "--slug", "demo", "--yes").returncode, 0)
+        self.assertFalse((self.cdir / "worktrees/sabotage-a").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

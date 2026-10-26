@@ -14,6 +14,7 @@ outside it, and both have already shipped past this cascade's existing gates.
 - [BOUNDARIES.md](#boundariesmd) — what you write, and what you escalate
 - [Scale assertions](#scale-assertions) — ratio bands and the method that survives parallel spawn
 - [Anti-gaming rules](#anti-gaming-rules) — how a scale test gets faked
+- [Waiting without sleeping](#waiting-without-sleeping) — conditions are polled, never slept on
 - [No auto-pass: generated and matrix tests](#no-auto-pass-generated-and-matrix-tests) — vacuous expectations in data-driven suites
 - [Gotchas](#gotchas) — two real misses from this project
 - [Deliberately out of scope](#deliberately-out-of-scope)
@@ -135,6 +136,34 @@ quadratic:
 - **Count work, not calls to your own wrapper.** Spy on the operation that actually
   scales (comparisons, row fetches, allocations), not on the entry point, which is
   called once regardless.
+
+## Waiting without sleeping
+
+`check_invariants.py` fails any brief-declared test file that waits with a fixed
+sleep (`time.sleep`, `asyncio.sleep`, `setTimeout` as a promise delay, `sleep N`,
+`Thread.sleep`, `time.Sleep`, `thread::sleep`). There is no escape hatch.
+
+A wait is a predicate polled against a deadline:
+
+- It **returns the instant the predicate holds** — a fast implementation costs nothing.
+- It **fails when the deadline passes** — a slow or wrong implementation is red, not flaky.
+- It is **never a fixed sleep** whose length has to outlast the slowest correct run.
+
+Reference helper (adapt to the project's language and test runner):
+
+```python
+def wait_until(pred, timeout=5.0, interval=0.01):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pred():
+            return
+        time.sleep(0)  # yield; or an event/condition wait where the runtime has one
+    raise AssertionError("condition not met within timeout")
+```
+
+Prefer the runtime's own primitive over polling when it exists (`threading.Event.wait`,
+`asyncio.wait_for`, a runner's `waitFor`/`eventually`) — none of those is a fixed sleep.
+Control time with an injected clock or fake timers rather than waiting for it to pass.
 
 ## No auto-pass: generated and matrix tests
 

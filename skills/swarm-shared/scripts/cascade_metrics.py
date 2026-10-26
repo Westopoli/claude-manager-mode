@@ -52,6 +52,7 @@ HERE = Path(__file__).resolve().parent
 # ---------- role classification (ported verbatim from the audit miner) ----------
 
 ROLE_RULES: list[tuple[str, str]] = [
+    ("saboteur", r"sabot|SABOTAGE"),
     ("adjudicator", r"adjudicat"),
     ("admission-runner", r"admission[- ]runner|^admit leaf|run_gates.*admit"),
     ("sweep-runner", r"sweep[- ]runner"),
@@ -66,6 +67,7 @@ ROLE_RULES: list[tuple[str, str]] = [
 ]
 
 PROMPT_RULES: list[tuple[str, str]] = [
+    ("saboteur", r"SABOTAGE-BRIEF|partial fake|OUT_OF_SCOPE"),
     ("leaf", r"You are leaf-\S+ of a TDD cascade|Read your brief at|Your brief is inlined|impl_files? IN PLACE"),
     ("admission-runner", r"admission-runner|run_gates\.py.*admit"),
     ("sweep-runner", r"sweep-runner|assumption[- ]sweep"),

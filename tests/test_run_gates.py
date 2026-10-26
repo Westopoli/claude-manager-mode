@@ -115,8 +115,11 @@ def build_cascade(root: Path, slug: str = "demo", leaves: tuple[str, ...] = ("le
             ops(root, "commit", "--slug", slug, "--leaf", leaf)   # Phase 5.1
 
     # SWEEP must be newer than every ASSUMPTIONS (G7).
-    time.sleep(0.01)
-    (cdir / "wave-1.SWEEP.md").write_text("Assumption-sweep clean.\n")
+    sweep = cdir / "wave-1.SWEEP.md"
+    sweep.write_text("Assumption-sweep clean.\n")
+    newest = max((p.stat().st_mtime for p in (cdir / "briefs").glob("*.ASSUMPTIONS.md")),
+                 default=sweep.stat().st_mtime)
+    os.utime(sweep, (newest + 1, newest + 1))
     return cdir
 
 

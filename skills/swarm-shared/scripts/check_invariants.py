@@ -12,6 +12,8 @@ frontmatter, and validates against the three invariants defined in
         `# spec: <path>::<section>::AC-<N>` header)
     (e) no-contradiction (heuristic — same identifier asserted to two
         different literal values across sibling briefs, same wave/shard)
+    (f) no-sleep (no brief-declared test file waits with a fixed sleep; waits
+        are condition polls with a deadline — hard FAIL, no escape hatch)
 
 Output: one line per brief plus a summary line. Exit code 0 only if all briefs
 pass. Designed to be called from a shell snippet inside SKILL.md so the audit
@@ -60,6 +62,11 @@ DEFAULTS: dict[str, Any] = {
             "use your judgment", "pick", "select an approach",
         ],
     },
+    "sabotage": {
+        "max_targets_per_leaf": 8,
+        "timeout_seconds": 120,
+        "variants": ["none", "const", "identity", "true"],
+    },
 }
 
 
@@ -107,7 +114,8 @@ def git_root(start: Path) -> Path:
 def load_config(root: Path) -> dict[str, Any]:
     cfg_path = root / ".claude-swarm.toml"
     if not cfg_path.exists():
-        cfg = {**DEFAULTS, "invariants": {**DEFAULTS["invariants"]}}
+        cfg = {**DEFAULTS, "invariants": {**DEFAULTS["invariants"]},
+               "sabotage": {**DEFAULTS["sabotage"]}}
         cfg["_user_keys"] = frozenset()
         return cfg
     with cfg_path.open("rb") as fh:
@@ -115,6 +123,7 @@ def load_config(root: Path) -> dict[str, Any]:
     merged = {**DEFAULTS, **user_cfg}
     inv = {**DEFAULTS["invariants"], **user_cfg.get("invariants", {})}
     merged["invariants"] = inv
+    merged["sabotage"] = {**DEFAULTS["sabotage"], **user_cfg.get("sabotage", {})}
     # An explicitly-set key always wins over a derived default. Without this
     # the cascade-slug resolver below cannot tell `briefs_dir` the user chose
     # from `briefs_dir` that merely fell through from DEFAULTS.
@@ -607,6 +616,48 @@ def check_spec_link(briefs: list[Brief], root: Path) -> list[Failure]:
     return fails
 
 
+_SLEEP_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+    "py": (re.compile(r"\btime\.sleep\s*\("), re.compile(r"\basyncio\.sleep\s*\("),
+           re.compile(r"(?<![\w.])sleep\s*\(")),
+    "js": (re.compile(r"new\s+Promise\s*\(.*setTimeout"), re.compile(r"setTimeout\s*\([^,]*resolve"),
+           re.compile(r"await\s+[\w.]*sleep\s*\(")),
+    "sh": (re.compile(r"(?:^|[;&|(]\s*|\s)sleep\s+[\d$]"),),
+    "java": (re.compile(r"\bThread\.sleep\s*\("),),
+    "go": (re.compile(r"\btime\.Sleep\s*\("),),
+    "rs": (re.compile(r"\bthread::sleep\s*\("),),
+}
+_SLEEP_LANG = {".py": "py", ".js": "js", ".jsx": "js", ".ts": "js", ".tsx": "js", ".mjs": "js",
+               ".cjs": "js", ".sh": "sh", ".bash": "sh", ".java": "java", ".kt": "java",
+               ".go": "go", ".rs": "rs"}
+_COMMENT_PREFIX = {"py": "#", "sh": "#", "js": "//", "java": "//", "go": "//", "rs": "//"}
+
+
+def check_no_sleep(briefs: list[Brief], root: Path) -> list[Failure]:
+    """No brief-declared test file may wait with a fixed sleep.
+
+    A sleep-based wait is slow when the condition holds early and flaky when it
+    holds late, and it lets a wrong implementation "pass" by timing alone. Waits
+    must be condition polls with a deadline (test-design.md "Waiting without
+    sleeping"). Hard FAIL; there is no escape hatch.
+    """
+    fails: list[Failure] = []
+    for b in briefs:
+        for path in _leaf_paths(b, "test"):
+            p = root / path
+            lang = _SLEEP_LANG.get(p.suffix.lower())
+            if lang is None or not p.is_file():
+                continue
+            for n, line in enumerate(p.read_text().splitlines(), 1):
+                if line.lstrip().startswith(_COMMENT_PREFIX[lang]):
+                    continue
+                if any(rx.search(line) for rx in _SLEEP_PATTERNS[lang]):
+                    fails.append(Failure(b.leaf_id, "no-sleep",
+                        f"test file {path}:{n} uses sleep-based wait; replace with a "
+                        f"condition poll that returns immediately on success and fails on timeout"))
+                    break
+    return fails
+
+
 _CONTRADICTION_RE = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*==\s*(-?\d+\.?\d*)")
 
 
@@ -732,6 +783,7 @@ def audit(briefs_dir: Path, cfg: dict[str, Any], root: Path) -> Report:
     rpt.failures.extend(check_shard_sizing(rpt.briefs, cfg["invariants"]))
     rpt.failures.extend(check_spec_link(rpt.briefs, root))
     rpt.failures.extend(check_no_contradiction(rpt.briefs, root))
+    rpt.failures.extend(check_no_sleep(rpt.briefs, root))
     return rpt
 
 

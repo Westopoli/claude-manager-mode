@@ -34,6 +34,9 @@ assert_exists "$CASE_CLAUDE_HOME/skills/manager-mode/SKILL.md"
 assert_exists "$CASE_CLAUDE_HOME/skills/manager-mode-hardcore/SKILL.md"
 assert_exists "$CASE_CLAUDE_HOME/skills/swarm-shared/SKILL.md"
 assert_exists "$CASE_CLAUDE_HOME/skills/manager-mode/agents/openai.yaml"
+for script in degenerate_sweep.py sabotage_run.py test_results.py; do
+  assert_exists "$CASE_CLAUDE_HOME/skills/swarm-shared/scripts/$script"
+done
 assert_missing "$CASE_CODEX_HOME/skills"
 
 run_case codex_only codex ""

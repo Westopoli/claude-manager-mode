@@ -1,0 +1,1 @@
+def Allowed(): pass

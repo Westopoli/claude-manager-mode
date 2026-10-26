@@ -89,6 +89,10 @@ Runs on Sonnet 5.5, always — implementing against an already-locked, already-a
 
 **Owns internals, escalates externals.** A leaf makes small implementation choices freely — helper names, where a private function boundary falls inside its own file, control-flow shape. What it may not decide alone is anything a sibling leaf or the umbrella test could observe from outside its file: a public signature, a contract symbol, an unpinned business rule. Those go to the question ledger, where it proceeds under a logged best-guess rather than blocking (see "Synchronous waits" below — a leaf that stalls waiting for the parent stalls the wave). This is the same boundary `/manager-mode` Phase 4.1 states to the leaf directly; the older "never makes design decisions, stops and reports, does not guess" phrasing overstated it in both directions at once.
 
+### Saboteur
+
+Runs on Sonnet 5.5 — bounded mechanical work: write two tiny fakes per target and read a tri-state result. One fresh saboteur per shard, spawned after the test audit is clean and before any leaf. It proves tests *hold legs*: for each target (a boundary value, a rule, an AC-named value) it writes a **correct** partial fake that must leave every in-scope test green, then a **flipped** one that must turn at least one in-scope test red. Fakes implement only the target and raise `NotImplementedError` elsewhere; a test that fails with `NotImplementedError` is `OUT_OF_SCOPE`, not evidence. It never writes a full implementation, never edits tests, never runs git, and writes fake sources only under the audit directory. The scripted degenerate-fake sweep runs first and needs no agent.
+
 ---
 
 ## Intake interview and the assumption log

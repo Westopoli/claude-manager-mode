@@ -38,6 +38,9 @@ class InvariantFixtureTests(unittest.TestCase):
     def test_invalid_contract_import(self) -> None:
         self.run_fixture("invalid-contract-import", "not in locked contract")
 
+    def test_sleep_based_wait_fails(self) -> None:
+        self.run_fixture("sleep-in-test", "uses sleep-based wait")
+
     def test_sizing_limit(self) -> None:
         self.run_fixture("sizing", "exceeds project max")
 

@@ -13,6 +13,9 @@ This is a **support skill**, not an invocable one. At runtime `/manager-mode` re
 - `references/evaluation-rubric.md` — review scoring rubric
 - `scripts/check_invariants.py` — invariant audit helper
 - `scripts/cascade_metrics.py` — records a cascade's token cost + outcome (Phase 7.2); `rates.json` beside it holds USD/MTok per model
+- `scripts/degenerate_sweep.py` — Phase 3.5.1 degenerate-fake sweep (tests must go red against do-nothing fakes)
+- `scripts/sabotage_run.py` — Phase 3.5.2 runner: one saboteur partial fake against a leaf's tests, tri-state result
+- `scripts/test_results.py` — shared test-command runner/parser used by both
 - `agents/antigravity/swarm-leaf.md` — Antigravity subagent definition every leaf dispatch routes through (Claude Code and Codex use their own native delegation instead; see `manager-mode/SKILL.md`'s client delegation adapter)
 - `templates/` — config templates
 

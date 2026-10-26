@@ -77,6 +77,8 @@ Each sub-task is one test file + one impl file. The sub-task is done when its ow
                             per-leaf failing tests (Spec Link Rule, ≤16 leaves)
                 Phase 3    audit briefs (check_invariants.py + external
                             test-quality audit — block on FAIL)
+                Phase 3.5  bug injection: degenerate-fake sweep + one saboteur per
+                            shard prove the tests go red against wrong code — blocking
                 Phase 4    wave base commit; one git worktree per leaf; spawn N in parallel
                 Phase 5    wait green; commit each leaf worktree; assumption-sweep
                 Phase 6    admission loop: G1–G10 + umbrella pre/post per leaf
@@ -117,24 +119,26 @@ The load-bearing evals are B, E, and G: real time gets lost when those gates get
 
 | Component | What |
 |---|---|
-| `/manager-mode` | The single command. Drives all eight phases — preflight, lite-discovery, decompose, audit, spawn, sweep, admission loop, report. |
+| `/manager-mode` | The single command. Drives every phase — preflight, lite-discovery, decompose, audit, bug injection, spawn, sweep, admission loop, report. |
 | `run_gates.py` | Runs every Phase 6.5 gate for one leaf in a single command — artifact preconditions, file-match, G1–G6, G8–G10 — and writes the leaf's `GATES.md` evidence file itself. Read-only: it verifies, it never admits. Exists because prose gates have no failure mode; across 64 surveyed cascades the boundary sweep was recorded 0 times and 13 of 15 admission logs held a header and no rows. |
-| `check_invariants.py` | Deterministic audit script run at Phase 3. Standalone — runnable in CI without Claude Code. Checks file-overlap, no-design, sizing, and the Spec Link Rule (every test file headers `# spec: <path>::<section>::AC-<N>`). |
+| `check_invariants.py` | Deterministic audit script run at Phase 3. Standalone — runnable in CI without Claude Code. Checks file-overlap, no-design, sizing, the Spec Link Rule (every test file headers `# spec: <path>::<section>::AC-<N>`), and `no-sleep` (no fixed-sleep waits in tests). |
+| `degenerate_sweep.py` / `sabotage_run.py` | Phase 3.5 bug injection. The sweep swaps each leaf's impl for do-nothing fakes (nothing / 0 / first arg / `True`) in a scratch worktree and flags any test that still passes; the runner executes a saboteur's partial fake and classifies each test `PASS` / `OUT_OF_SCOPE` (`NotImplementedError`) / `FAIL`. |
 | `playbook.md` | Full theory: why each invariant exists, what failure mode it prevents, prep-step seam discipline, file-mediated coordination patterns. |
 | `brief-template.md` | Canonical leaf-brief shape. `/manager-mode` Phase 2 emits briefs against this template; Phase 3 audits against it. |
 
 ## How it works
 
-`/manager-mode` walks through eight phases without you having to invoke anything else:
+`/manager-mode` walks through nine phases without you having to invoke anything else:
 
 1. **Preflight (Phase 0).** Find or bootstrap `.claude-swarm.toml`. List which of {spec, contract, umbrella} already exist on disk.
 2. **Lite-discovery (Phase 1).** Fires only for missing inputs. One-question drafts per artifact — spec, type contract, failing umbrella test. The spec carries a Bible Compliance footer (cites your source-of-truth doc + lists deliberate divergences). No `.UNSTATED.md` ceremony.
 3. **Decompose (Phase 2).** Reads spec + contract, emits one brief per sub-agent at `<briefs_dir>/leaf-NN.md`. A separate shard-test-writer — never the overlord — authors the failing test for each brief; leaves only write impl. Refuses to emit more than 16 leaves in one wave. Every test file begins with a `# spec: <path>::<section>::AC-<N>` header (Spec Link Rule).
 4. **Audit (Phase 3).** Runs `check_invariants.py`. Any FAIL → fix the brief and re-run. No spawn until PASS.
-5. **Spawn (Phase 4).** Commit the Phase 1–3 artifacts as the wave base (with your OK), then give each leaf its own git worktree on `swarm/<slug>/leaf-NN` and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`, Antigravity dispatches through its native subagent routing to the shipped `swarm-leaf` definition). Each leaf edits its impl files in place inside its worktree — never running git — and confirms RED→GREEN for real. Because your checkout is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
-6. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green, then commit each leaf's declared files from its worktree onto its branch (`worktree_ops.py commit` refuses on any undeclared write or any sign the leaf ran git). Run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
-7. **Admission loop (Phase 6).** Per leaf: G1–G10 gates → file-match → umbrella pre/post → admit-or-revert. G5 diffs the leaf's commit against the wave base, so any write outside its declared footprint blocks. Admission is a `--no-ff` merge into `swarm/<slug>/integration`; revert is a `reset --hard` there, with the leaf's commit kept on a `reverted/` branch for forensics. Your own branch is written only by the confirmed base commit and the confirmed final fast-forward. Append-only `post-review-log.md` (now with leaf/merge shas) plus a per-leaf `GATES.md` — the log records an admission, the evidence file records that the gates actually ran.
-8. **Report + evidence audit (Phases 7–8).** Counts of admitted/reverted/escalated and apex status, followed by parallel evidence audits in deterministic ≤3-leaf batches. The overlord records accepted/denied findings and verifies any confirmed in-footprint repair with affected tests and the configured full suite.
+5. **Bug injection (Phase 3.5).** Before any leaf exists, prove the tests can fail. `degenerate_sweep.py` runs each leaf's tests against do-nothing fakes in a scratch worktree; a test that still passes asserts nothing. One fresh saboteur per shard then writes a correct and a flipped partial fake per boundary/rule target — the correct one must stay green, the flipped one must turn an in-scope test red; `NotImplementedError` marks a test out of scope. Blocking; findings go to a test-fixer.
+6. **Spawn (Phase 4).** Commit the Phase 1–3 artifacts as the wave base (with your OK), then give each leaf its own git worktree on `swarm/<slug>/leaf-NN` and spawn one sub-agent per brief in parallel (Claude Code uses native `Task` delegation, Codex uses `spawn_agent`, Antigravity dispatches through its native subagent routing to the shipped `swarm-leaf` definition). Each leaf edits its impl files in place inside its worktree — never running git — and confirms RED→GREEN for real. Because your checkout is untouched for the whole wave, "green in isolation" means it: a leaf's green cannot be produced by a sibling's edits.
+7. **Wait + sweep (Phase 5).** Wait for every sub-agent to report green, then commit each leaf's declared files from its worktree onto its branch (`worktree_ops.py commit` refuses on any undeclared write or any sign the leaf ran git). Run the aggregate assumption-sweep — read every `leaf-NN.ASSUMPTIONS.md`, classify drift (contradicts-spec, contradicts-bible, cross-leaf, fabricated, compounded), write `wave-N.SWEEP.md`. User picks patch-vs-redo per flagged entry.
+8. **Admission loop (Phase 6).** Per leaf: G1–G10 gates → file-match → umbrella pre/post → admit-or-revert. G5 diffs the leaf's commit against the wave base, so any write outside its declared footprint blocks. Admission is a `--no-ff` merge into `swarm/<slug>/integration`; revert is a `reset --hard` there, with the leaf's commit kept on a `reverted/` branch for forensics. Your own branch is written only by the confirmed base commit and the confirmed final fast-forward. Append-only `post-review-log.md` (now with leaf/merge shas) plus a per-leaf `GATES.md` — the log records an admission, the evidence file records that the gates actually ran.
+9. **Report (Phase 7).** Counts of admitted/reverted/escalated and apex status, plus the cascade's token cost recorded by `cascade_metrics.py`.
 
 ## Coordination model
 
@@ -158,6 +162,9 @@ Every safety net is a numbered gate. Each runs at a specific point in the workfl
 | `no-design` | No ambiguous verbs in task prose; no symbols outside the locked contract. | Phase 3 |
 | `sizing` | Impl/test budgets within configured caps. | Phase 3 |
 | `spec-link` | Every brief-declared test file begins with `# spec: <path>::<section>::AC-<N>`. | Phase 3 |
+| `no-sleep` | No brief-declared test file waits with a fixed sleep; waits poll a condition against a deadline. Hard FAIL. | Phase 3 |
+| `degenerate-sweep` | No test passes against a do-nothing fake of its impl. | Phase 3.5.1 |
+| `sabotage` | A correct partial fake keeps in-scope tests green; a flipped one turns at least one red. | Phase 3.5.2 |
 | `codebase-preconditions` | `verify:` commands on briefs that claim codebase state pass. | Phase 3.1 |
 | `task-size` | Wave has ≤ 12 leaves (warn 13–16, refuse > 16). | Phase 2.2 |
 | `bible-compliance` | Spec cites the source-of-truth doc + lists deliberate divergences. | Phase 1.A |
@@ -264,10 +271,13 @@ Every role runs on Claude Sonnet 5.5 (`claude-sonnet-5-5`), pinned by explicit i
 | Shard-test-writer | Sonnet 5.5 |
 | Leaf implementers | Sonnet 5.5 |
 | Test-fixer | Sonnet 5.5 |
+| Saboteur | Sonnet 5.5 |
 | Test-quality auditors (hardcore: two auditors plus the adjudicator) | Sonnet 5.5 |
 | Delegated drafting passes (dependency map, consolidation, ambiguity resolution) | Sonnet 5.5 |
 
 The Antigravity `swarm-leaf` definition keeps `model: inherit`: Antigravity picks its own model, and the skill does not override it.
+
+**2026-10-26.** Phase 3.5 bug injection (blocking, in both `/manager-mode` and `/manager-mode-hardcore`): scripted degenerate-fake sweep plus a Sonnet 5.5 saboteur per shard, run in a scratch worktree before any leaf spawns. New hard-failing `no-sleep` invariant. `rates.json` now prices `claude-sonnet-5-5` explicitly.
 
 **2026-10-21.** All roles default to Claude Sonnet 5.5 (overlord, shard-test-writer, leaves, test-fixer, auditors, adjudicator, drafting passes). Rationale: the overlord's and test-writer's judgement work is covered by the spec, contract and umbrella test written before the cascade, and in hardcore by the doubled audit; leaf work is bounded by design. Previously: Opus 5 for overlord and shard-test-writer, Sonnet 5 for auditors, Sonnet 4.6 for leaves, test-fixer and drafting passes.
 

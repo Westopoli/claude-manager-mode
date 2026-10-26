@@ -213,10 +213,17 @@ class CascadeMetricsTests(unittest.TestCase):
                                "--projects-root", str(self.fx.projects)], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 2)
 
+    def test_sonnet_5_5_priced_explicitly(self):
+        rates = json.loads((Path(cm.__file__).parent / "rates.json").read_text())
+        self.assertIn("claude-sonnet-5-5", rates)
+        self.assertEqual(cm.cost_usd("claude-sonnet-5-5", {**cm.zero_usage(), "input_tokens": 1_000_000}, rates), 3.0)
+
     def test_classify_new_runner_roles(self):
         self.assertEqual(cm.classify("admission-runner leaf-03"), "admission-runner")
         self.assertEqual(cm.classify("sweep-runner wave 1"), "sweep-runner")
         self.assertEqual(cm.classify("leaf-07: build parser"), "leaf")
+        self.assertEqual(cm.classify("saboteur shard-a"), "saboteur")
+        self.assertEqual(cm.classify("Something else", "Read SABOTAGE-BRIEF.md"), "saboteur")
         self.assertEqual(cm.classify("Something else", "Your brief is inlined below"), "leaf")
         self.assertEqual(cm.classify("Research pricing"), "other")
 

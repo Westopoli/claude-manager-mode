@@ -1,6 +1,6 @@
 ---
 name: manager-mode
-description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → plan-consistency → decompose → audit → spawn → wait + sweep → admission loop → final report) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing); a separate shard-test-writer writes per-leaf failing tests; leaves only write impl — no agent ever grades its own tests. A blocking plan-consistency pass checks the locked spec/contract/umbrella against each other before decomposition. Leaves build in per-leaf git worktrees, so a leaf's green cannot be produced by a sibling's edits. A fresh test-auditor per shard reviews goal-fidelity and umbrella-alignment before any leaf spawns — no post-admission adversarial pass exists. Decomposition consolidates file-disjoint slices into one leaf when they're one coherent responsibility, scored by a spec-text rubric (rule-clusters, exception branches, integrations, cross-cutting concerns), not a leaf-per-file default. Git-worktree isolation — leaves never run git; one script (`worktree_ops.py`) does, and the user's branch is written only by a confirmed base commit and a confirmed final fast-forward. Hard-refuses when decomposition exceeds 16 leaves. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
+description: Single-command parallel-agent TDD cascade. Use when the user wants to build a feature with parallel sub-agents — phrases like "swarm this", "decompose and spawn", "run the cascade", "spawn N agents on this", "build feature X with parallel agents", "set up the wave", "let's parallelize this". Walks through all phases internally (preflight → lite-discovery → plan-consistency → decompose → audit → bug-injection → spawn → wait + sweep → admission loop → final report) — no sibling slash commands to chain. Overlord chat writes spec/contract/umbrella (lite drafts if missing); a separate shard-test-writer writes per-leaf failing tests; leaves only write impl — no agent ever grades its own tests. A blocking plan-consistency pass checks the locked spec/contract/umbrella against each other before decomposition. Leaves build in per-leaf git worktrees, so a leaf's green cannot be produced by a sibling's edits. A fresh test-auditor per shard reviews goal-fidelity and umbrella-alignment before any leaf spawns, then a degenerate-fake sweep and a saboteur inject deliberate bugs so the tests are proven to go red against wrong code — no post-admission adversarial pass exists. Decomposition consolidates file-disjoint slices into one leaf when they're one coherent responsibility, scored by a spec-text rubric (rule-clusters, exception branches, integrations, cross-cutting concerns), not a leaf-per-file default. Git-worktree isolation — leaves never run git; one script (`worktree_ops.py`) does, and the user's branch is written only by a confirmed base commit and a confirmed final fast-forward. Hard-refuses when decomposition exceeds 16 leaves. Always invoke this when the user wants parallel sub-agent work — not separate commands for spawn / review / post-review (they no longer exist).
 ---
 
 # /manager-mode — single-command parallel-agent cascade
@@ -32,6 +32,7 @@ Every role runs on Claude Sonnet 5.5 (`claude-sonnet-5-5`). The overlord's and s
 - **Shard-test-writer** — Sonnet 5.5. Writing a correct, non-tautological test from spec+contract text alone (2.6). Pass `model: "claude-sonnet-5-5"` on the spawn call.
 - **Leaf implementers** — Sonnet 5.5, always, regardless of which `subagent_type` (Phase 4.2) is picked for a leaf. Implementing against an already-locked, already-audited failing test is bounded, mechanical work by design — that boundedness is the whole point of the brief template (see brief-template.md "Why this template"). Pass `model: "claude-sonnet-5-5"` explicitly on every Phase 4 delegation call; do not let it inherit whatever the overlord happens to be running on.
 - **Test-fixer** — Sonnet 5.5. Repairing a test against an already-adjudicated audit finding (3.4.3) is bounded work with the answer attached, unlike authoring one from spec text. Pass `model: "claude-sonnet-5-5"`.
+- **Saboteur** — Sonnet 5.5. Bounded work: write two small fakes per target and read a tri-state result (3.5.2). Never a writer, auditor, fixer or overlord. Pass `model: "claude-sonnet-5-5"` on every 3.5.2 spawn call.
 - **Test-quality auditors** — Sonnet 5.5. Judging goal-fidelity and umbrella-alignment against a locked spec is bounded review work against a fixed brief, not open-ended synthesis. Pass `model: "claude-sonnet-5-5"` on every 3.4.2 spawn call.
 
 Dependency-map/consolidation/ambiguity-resolution drafting sub-agents (Delegated drafting passes) run on Sonnet 5.5, `model: "claude-sonnet-5-5"`, explicitly on every spawn call — bounded drafting labor the overlord independently verifies (see "Delegated drafting passes" below). Do not let this inherit whatever the overlord happens to be running on.
@@ -46,6 +47,7 @@ Phase 1    Lite-discovery       — fire only for missing inputs; one-question d
 Phase 1.5  Plan-consistency     — overlord checks the locked spec/contract/umbrella against each other; BLOCKING
 Phase 2    Decompose            — dependency map + consolidation pass + emit briefs + shard-test-writer authors per-leaf failing tests (Spec Link Rule + composition assertion + boundary/scale sweep + task-size guardrail)
 Phase 3    Audit briefs         — run check_invariants.py (incl. contradiction check) + codebase-preconditions + external test-quality audit (goal-fidelity + umbrella-alignment + composition + boundary/scale); fix & re-run on FAIL
+Phase 3.5  Bug injection        — degenerate_sweep.py + one saboteur per shard prove tests go red against wrong code; BLOCKING
 Phase 4    Spawn leaves         — wave base commit; one git worktree per leaf; N sub-agents in parallel through the client delegation adapter
 Phase 5    Wait + sweep         — wait all green; commit each leaf worktree onto its branch; aggregate assumption-sweep; write wave-N.SWEEP.md
 Phase 6    Admission loop       — per leaf: G1–G10 + file-match + umbrella pre/post + admit-or-revert + log
@@ -290,6 +292,8 @@ Per-leaf tests are **not** written by the overlord directly, with no exception f
 
 **No auto-pass (generated/matrix tests)** — if a leaf's tests are data-driven or parametrized from a generated set of cases (a probe's output, a fixture matrix, anything wider than hand-written cases), see test-design.md's "No auto-pass" section before writing them: every non-degenerate case needs a positively-defined, independently-computed expectation (never derived from the input under test itself), verdicts are a closed enum with no silent fall-through to PASS, and the grader itself gets validated against a stub-empty and a stub-all implementation before its output is trusted. Prefer a false-positive FAIL an investigation later clears over a false-negative auto-PASS nobody ever sees.
 
+**No sleep-based waits** — a test that must wait does so by polling a condition against a deadline, never by sleeping a fixed time; Phase 3's `no-sleep` check fails the file otherwise. See test-design.md "Waiting without sleeping".
+
 **Composition rule (mockist)** — if a leaf's `impl_files` has more than one entry, its test must include at least one interaction assertion (e.g. monkeypatch/spy proving the orchestrator actually calls the collaborator), not just output-state checks. State-only tests can't tell an unused, orphaned function from a wired-in one. See `brief-template.md`'s test-writing guidance.
 
 **Spec Link Rule** — every test file MUST begin with a header comment of this exact shape:
@@ -326,6 +330,7 @@ The script reads `.claude-swarm.toml`, parses every `leaf-*.md` in `briefs_dir`,
 - **sizing** — `impl_line_budget` ≤ `max_impl_lines`; `test_assertion_budget` ≤ `max_test_assertions`.
 - **shard-sizing** — no `(wave, shard)` group holds more than `max_leaves_per_shard` (default 6) leaves. One shard is one shard-test-writer; see "Shards". An unsharded wave is one group, so a 7-leaf wave fails here until it is split.
 - **spec-link** — every brief-declared test file path starts with `# spec: ...::AC-N` header (or `-- spec: ...::AC-N` for SQL).
+- **no-sleep** — no brief-declared test file waits with a fixed sleep (`time.sleep`, `asyncio.sleep`, `setTimeout` as a delay, `sleep N`, `Thread.sleep`, `time.Sleep`, `thread::sleep`). Hard FAIL, no escape hatch: waits are condition polls with a deadline (test-design.md "Waiting without sleeping").
 
 Exit 0 = all pass, exit 1 = findings, exit 2 = config error.
 
@@ -347,7 +352,7 @@ If FAIL is on **non-overlap**, surface both resolution paths (sequential waves v
 
 ### 3.4 Test-quality audit (external, before any leaf spawns)
 
-Once a shard's tests exist (2.6) and pass the invariant audit (3.0–3.3), spawn one fresh-context auditor per shard on Sonnet 5.5 (`model: "claude-sonnet-5-5"` — see "Model defaults" above) — same `caveman:cavecrew-reviewer`/`general-purpose`-fallback pattern used elsewhere in this skill, scoped to tests only — to audit that shard's test output before any leaf ever sees it. This is where test quality is judged: the overlord never grades its own (or the shard-test-writer's) tests directly, and no agent-based review of the implementation runs after admission. G8 (`test_quality_gate.py`, Phase 6.5) remains the mechanical backstop against orphaned/unreachable impl and weak assertions — this step is upstream and agent-judgment-based, G8 is downstream and scripted; they check different things and neither replaces the other.
+Once a shard's tests exist (2.6) and pass the invariant audit (3.0–3.3), spawn one fresh-context auditor per shard on Sonnet 5.5 (`model: "claude-sonnet-5-5"` — see "Model defaults" above) — same `caveman:cavecrew-reviewer`/`general-purpose`-fallback pattern used elsewhere in this skill, scoped to tests only — to audit that shard's test output before any leaf ever sees it. This is where test quality is judged: the overlord never grades its own (or the shard-test-writer's) tests directly, and no agent-based review of the implementation runs after admission. G8 (`test_quality_gate.py`, Phase 6.5) remains the mechanical backstop against orphaned/unreachable impl and weak assertions — this step is upstream and agent-judgment-based, G8 is downstream and scripted; they check different things and neither replaces the other. Phase 3.5 sits between them: it executes the tests against deliberate bugs instead of reading them.
 
 #### 3.4.1 Overlord compiles the test-audit context package
 
@@ -386,7 +391,8 @@ Check three things, in order:
    catch now, not at admission.
 3. TEST QUALITY — traces to spec_lines, isn't tautological, carries the
    composition assertion from brief-template.md's mockist rule when
-   impl_files has 2+ entries. SEVERITY FLOOR: a field, value or format the
+   impl_files has 2+ entries, and waits on conditions rather than sleeping
+   (no sleep-based waits). SEVERITY FLOOR: a field, value or format the
    spec names explicitly, with zero assertions anywhere in this shard, is
    at least 🟡. Never file it as a 🟢 note. "The spec pins this and nothing
    checks it" is a gap, not a confidence observation — a real cascade filed
@@ -421,9 +427,95 @@ Note the deliberate asymmetry with 2.6, which puts original test *authoring* on 
 
 ---
 
+## Phase 3.5 — Bug injection (tests vs deliberate bugs)
+
+Phase 3.4 judges tests by reading them. Nothing in it proves a test goes red against wrong code. This phase does, before any leaf spawns and without writing a full fake implementation: a scripted sweep (3.5.1) shows the tests fail against do-nothing fakes, and one fresh **saboteur** per shard (3.5.2) injects a deliberate bug per target and checks the tests catch it. It runs after the Phase 3.4 audit is clean (in `/manager-mode-hardcore`, after the adjudicated audit is clean) and is **blocking**. Both steps complement 3.4 and G8: the auditor reads, the sweep and saboteur execute, G8 checks the finished impl.
+
+Everything runs in a detached **scratch worktree**, never in the checkout and never on the user's branch.
+
+### 3.5.0 Scratch worktree
+
+Phase 3.5 runs before the 4.0 base commit, so the scratch worktree branches from `HEAD` and then has the dirty and untracked Phase 1–3 artifacts (spec, contract, briefs' tests) copied over it. One per shard:
+
+```bash
+python "$SWARM_SHARED_DIR/scripts/worktree_ops.py" scratch add --slug <cascade-slug> --name sabotage-<shard-or-default>
+```
+
+The target project needs permission entries for `degenerate_sweep.py` and `sabotage_run.py` next to the `worktree_ops.py` one from 0.0 (`Bash(python3 *degenerate_sweep.py*)`, `Bash(python3 *sabotage_run.py*)`). `degenerate_sweep.py` creates and removes its own scratch worktree unless given `--scratch-dir`; the saboteur's runner needs the one created above.
+
+### 3.5.1 Degenerate-fake sweep (scripted)
+
+```bash
+python "$SWARM_SHARED_DIR/scripts/degenerate_sweep.py" --cascade <cascade-slug> --wave <wave> --shard <shard-or-default> --scratch-dir <scratch>
+```
+
+For each leaf it replaces the impl file, in the scratch worktree, with a fake that returns nothing / `0` / its first argument / `True` for every symbol the tests import, and runs the leaf's tests against each. Exit 0 clean, 1 findings, 2 config error. Output is `DEGENERATE-SWEEP.md` (+ `.json`) under `audits/wave-<wave>/<shard-or-default>/`; render it verbatim.
+
+- 🔴 **a test PASSES against a degenerate fake** — it asserts nothing a wrong implementation could break.
+- 🔴 **no test collected under any fake** — the runner is missing or the tests import something the sweep cannot stub.
+- advisory: non-Python impl (`unsupported language, skipped`), or collection failing under only some fakes.
+
+### 3.5.2 Saboteur (one per shard)
+
+**(a) Overlord compiles `SABOTAGE-BRIEF.md`** at `.swarm/<cascade-slug>/audits/wave-<wave>/<shard-or-default>/SABOTAGE-BRIEF.md`, containing: the shard's brief set (paths, impl files, `contract_imports`), the full text of the tests, the shard's `BOUNDARIES.md`, the relevant AC excerpts, the scratch path, and the target list. Targets are the shard's boundary values and rules, ordered spec-pinned `BOUNDARIES.md` rows first, then values named in an AC, capped at `[sabotage] max_targets_per_leaf` per leaf; list the remainder as "uncapped" in the brief, never silently drop them.
+
+**(b) Spawn** one fresh saboteur per shard on Sonnet 5.5 (`model: "claude-sonnet-5-5"`), with this framing:
+
+```
+You are the saboteur for shard <shard-id>. You are a fresh-context agent.
+You prove tests catch bugs; you do not write the implementation and you do
+not edit tests. Read SABOTAGE-BRIEF.md.
+
+For each target, for its leaf:
+
+  Step A — CORRECT FAKE. Write a partial fake of the leaf's impl file that
+  implements ONLY this target correctly and raises NotImplementedError
+  for everything else. Run it:
+    python "$SWARM_SHARED_DIR/scripts/sabotage_run.py" --cascade <slug> \
+      --leaf <leaf> --scratch-dir <scratch> --fake <impl_rel>=<fake-source> \
+      --label correct --target <target>
+  Every in_scope test must PASS. Tests that fail with NotImplementedError
+  are OUT_OF_SCOPE: they cover other behavior and say nothing here. If an
+  in-scope test fails, your fake is wrong or the test is — retry once with a
+  corrected fake; if it still fails, record the target as ❓ and move on.
+
+  Step B — FLIPPED FAKE. Change the fake so the target is wrong (an
+  off-by-one at the boundary, the opposite branch, the wrong constant).
+  Run it with --label flipped. At least one in_scope test must FAIL.
+  If every in-scope test still passes, the tests do not pin this target: 🔴.
+
+Tri-state per test: PASS | OUT_OF_SCOPE | FAIL. Never run git. Write fake
+sources only under
+.swarm/<slug>/audits/wave-<wave>/<shard>/sabotage/<leaf>/<target>/{correct,flipped}/
+and nowhere else. Never edit tests or the real impl. Write
+SABOTAGE.md in the shard audit dir, one row per target:
+| leaf | target | correct (in-scope green?) | flipped (≥1 red?) | verdict |
+```
+
+### 3.5.3 On findings
+
+A 🔴 in `DEGENERATE-SWEEP.md` or `SABOTAGE.md` blocks that shard's leaves from Phase 4, same as a 3.4 finding. Repair goes to a fresh **test-fixer** (3.4.3 rules, `model: "claude-sonnet-5-5"`), given the finding and the test under repair. Then:
+
+- The saboteur re-runs **that target only** (Step A and B), not the whole target list.
+- The 3.4 auditor is not re-run unless the fix adds a new test file.
+- `degenerate_sweep.py` re-runs for the changed leaf (`--leaf <leaf>`).
+
+A target recorded ❓ (Step A failed twice) goes to the user as a question; it is not waved through.
+
+### 3.5.4 Teardown
+
+```bash
+python "$SWARM_SHARED_DIR/scripts/worktree_ops.py" scratch remove --slug <cascade-slug> --name sabotage-<shard-or-default>
+python "$SWARM_SHARED_DIR/scripts/worktree_ops.py" status --slug <cascade-slug>
+```
+
+`status` must show no `scratch-worktree` row before Phase 4 starts; `cleanup` also removes strays. Preflight on a later run refuses while one remains.
+
+---
+
 ## Phase 4 — Spawn leaves
 
-After Phase 3 reports `all PASS`: take the wave base commit (4.0), create one worktree per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 5.5 (`model: "claude-sonnet-5-5"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`; Antigravity delegates to its native subagent dispatch, routed by description match to the `swarm-leaf` subagent definition (`$SWARM_SHARED_DIR/agents/antigravity/swarm-leaf.md`). Dispatch the whole wave together, not sequentially.
+After Phase 3 reports `all PASS` and Phase 3.5 is clean for every shard: take the wave base commit (4.0), create one worktree per leaf (4.1), then spawn one sub-agent per brief **in parallel**, every one on Sonnet 5.5 (`model: "claude-sonnet-5-5"` — see "Model defaults" above; override whatever the chosen `subagent_type` would otherwise default to). Use the client delegation adapter: Claude Code issues its native `Task` delegation calls; Codex calls `spawn_agent`; Antigravity delegates to its native subagent dispatch, routed by description match to the `swarm-leaf` subagent definition (`$SWARM_SHARED_DIR/agents/antigravity/swarm-leaf.md`). Dispatch the whole wave together, not sequentially.
 
 ### 4.0 Wave base commit
 
@@ -534,7 +626,7 @@ This picks the *tool profile* (`subagent_type`), not the model — every impl le
 
 This is a hint, not a hard rule. The brief's footprint discipline is the actual safety net; the choice of sub-agent type is performance optimization. If a `cavecrew-builder` leaf hard-refuses mid-spawn, or reports it could not execute its own tests, re-spawn that one leaf as `general-purpose` — don't downgrade the whole wave.
 
-**Antigravity** has no `subagent_type`/tool-profile selection and no `cavecrew-*` equivalent — those are Claude-Code-specific caveman-skill agents, out of scope for this port. Every leaf dispatches through the one generic `swarm-leaf` subagent definition (full tool access, `model: inherit`); role differentiation (impl leaf, shard-test-writer, test-fixer, test-auditor) comes entirely from the prompt content each spawn call passes, same as `general-purpose` already does for Claude Code and Codex.
+**Antigravity** has no `subagent_type`/tool-profile selection and no `cavecrew-*` equivalent — those are Claude-Code-specific caveman-skill agents, out of scope for this port. Every leaf dispatches through the one generic `swarm-leaf` subagent definition (full tool access, `model: inherit`); role differentiation (impl leaf, shard-test-writer, test-fixer, saboteur, test-auditor) comes entirely from the prompt content each spawn call passes, same as `general-purpose` already does for Claude Code and Codex.
 
 ### 4.4 Wait for all leaves to report
 
@@ -799,7 +891,7 @@ Without `--yes` it shows `git log --oneline <user-branch>..swarm/<cascade-slug>/
 - **Write impl code itself.** The overlord writes spec, contract, and the umbrella test; the shard-test-writer writes per-leaf tests. Impl is the leaf's job.
 - **Delegate the DECISION or hide the review.** Spec approval, contract locking, brief emission, and gate enforcement are decisions and always happen in the overlord chat, visible to the user. What the overlord MAY do (see "Delegated drafting passes" below) is spawn a fresh sub-agent to produce a DRAFT of a hard synthesis artifact — a proposed decomposition shape, a proposed spec section, a proposed resolution of an ambiguity — which the overlord must then independently verify against everything it already knows (the spec, the contract, prior wave history, the user's own words in this chat) before adopting any part of it. The draft and the overlord's verification/edits are both rendered to the user; nothing about the reasoning is hidden. This is drafting-labor delegation, not decision delegation. If the overlord ever adopts a drafted artifact without recording its own independent check against it, that IS the banned failure mode — the boundary is the verification step, not the existence of a draft.
 - **Run git anywhere except `worktree_ops.py`, or touch the user's branch without asking.** Leaves never run git — their prompt says so and G5 catches a leaf that does. The overlord never types a raw git command either; every branch, worktree, commit, merge, reset and deletion goes through the one script, is logged to `.swarm/<cascade-slug>/git-ops.log`, and stays on `swarm/<cascade-slug>/*` refs. The user's own branch is written exactly twice, both after an explicit yes: the wave base commit (4.0) and the final fast-forward (7.4). No stash, no rebase, no `reset --hard` on the user's checkout, ever.
-- **Auto-spawn leaves before Phase 3 passes.** Phase 4 only fires after Phase 3 reports `all PASS`. Pre-audit spawn re-introduces every failure mode the audit prevents.
+- **Auto-spawn leaves before Phase 3 passes.** Phase 4 only fires after Phase 3 reports `all PASS` and Phase 3.5 is clean. Pre-audit spawn re-introduces every failure mode the audit prevents.
 - **Make architecture decisions silently.** Phase 1 surfaces Bible Compliance + each draft as an explicit approval gate. Phase 1.5 surfaces contradictions between the locked artifacts, and any external capability the spec assumes. Phase 2 surfaces fat-file collisions + leaf-count guardrails. Phase 3 surfaces invariant violations. Phase 5 surfaces aggregated assumption drift. Phase 6 surfaces per-leaf gate failures. Silence at any of these is the failure mode; explicit user choice is the success path.
 
 ---

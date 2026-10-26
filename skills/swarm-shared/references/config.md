@@ -79,6 +79,19 @@ ambiguous_verbs = [
   "use your judgment", "pick", "select an approach",
 ]
 
+[sabotage]
+# Phase 3.5 bug injection. The degenerate-fake sweep (3.5.1) is scripted; the
+# saboteur (3.5.2) writes partial fakes, one target at a time.
+#   max_targets_per_leaf  cap on targets one saboteur checks per leaf. Ordering when a
+#                         leaf has more: spec-pinned BOUNDARIES.md rows first, then
+#                         values named in an AC; the remainder is listed as "uncapped"
+#                         in SABOTAGE.md, not silently dropped.
+#   timeout_seconds       per test-command run, sweep and saboteur both.
+#   variants              degenerate fakes the sweep runs: none | const | identity | true.
+max_targets_per_leaf = 8
+timeout_seconds      = 120
+variants             = ["none", "const", "identity", "true"]
+
 [scale]
 # G10 growth bands (Phase 6.5), as the ratio cost(2N)/cost(N). Each sits at
 # the geometric midpoint between the complexity classes it separates, so a
@@ -130,9 +143,13 @@ One cascade, one directory:
     briefs/          leaf-NN.md, leaf-NN.ASSUMPTIONS.md
     worktrees/       leaf-NN/        # git worktree on swarm/<slug>/leaf-NN (Phase 4.1)
                      integration/    # git worktree on swarm/<slug>/integration (Phase 4.0)
+                     sabotage-<shard>/  # detached scratch worktree, Phase 3.5 only
     audits/          wave-<N>/<shard-or-default>/...
                      wave-<N>/leaf-NN.GATES.md
                      wave-<N>/leaf-NN.COMMIT       # sha written by Phase 5.1
+                     wave-<N>/<shard>/DEGENERATE-SWEEP.md|json   # Phase 3.5.1
+                     wave-<N>/<shard>/SABOTAGE-BRIEF.md, SABOTAGE.md   # Phase 3.5.2
+                     wave-<N>/<shard>/sabotage/<leaf>/<target>/{correct,flipped}/   # fake sources
     questions/       answers/       proposals/
     wave-<N>.base.json               # base commit + per-leaf branch/commit/merge shas
     wave-<N>.SWEEP.md

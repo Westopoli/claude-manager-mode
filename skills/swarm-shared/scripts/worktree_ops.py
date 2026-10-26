@@ -24,7 +24,7 @@ Roles
 * **run_gates.py stays read-only.** `admit` refuses unless that runner has
   written `leaf-NN.GATES.md` with no FAIL row.
 
-Subcommands (see SKILL.md Phases 0.0, 4.0, 4.1, 5.1, 6.6–6.9, 7)
+Subcommands (see SKILL.md Phases 0.0, 3.5, 4.0, 4.1, 5.1, 6.6–6.9, 7)
 -----------
   preflight --slug S                 refuse on non-git / dirty / detached / leftovers
   base      --slug S --wave N        record base sha, create integration branch+worktree
@@ -34,6 +34,7 @@ Subcommands (see SKILL.md Phases 0.0, 4.0, 4.1, 5.1, 6.6–6.9, 7)
   revert    --slug S --leaf L        undo a merge left in place by a same-count admit
   sync      --slug S --yes           ff the user's branch to integration (end of wave)
   finish    --slug S [--yes]         show pending commits; with --yes ff + cleanup
+  scratch   --slug S add|remove --name sabotage-<shard>   detached scratch worktree (Phase 3.5)
   status    --slug S                 list residual worktrees/branches (Phase 7 report)
   cleanup   --slug S [--purge --yes] remove leftovers; --purge also removes reverted/*
 
@@ -99,6 +100,9 @@ class Ctx:
 
     def wt_dir(self, leaf: str) -> Path:
         return self.cdir / "worktrees" / leaf
+
+    def scratch_dir(self, name: str) -> Path:
+        return self.cdir / "worktrees" / name
 
     @property
     def int_branch(self) -> str:
@@ -478,6 +482,52 @@ def cmd_add(ctx: Ctx, git: Git, wave: int, leaves: list[str]) -> int:
     return 0
 
 
+def _overlay_dirty(ctx: Ctx, git: Git, wt: Path) -> int:
+    """Copy dirty/untracked Phase 1–3 files from the main checkout into `wt`
+    (the scratch worktree branches from HEAD, which predates the 4.0 base commit)."""
+    r = ctx.root
+    ignore = effective_ignore(ctx.cfg)
+    status = git.out(["status", "--porcelain", "--untracked-files=all"], r)
+    n = 0
+    for rel in porcelain_paths(status):
+        if rel == ".swarm" or rel.startswith(".swarm/") or _ignored(rel, ignore):
+            continue
+        src, dst = r / rel, wt / rel
+        if src.is_file():
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            n += 1
+        elif not src.exists() and dst.exists():  # deleted in the checkout
+            dst.unlink()
+            n += 1
+    return n
+
+
+def cmd_scratch_add(ctx: Ctx, git: Git, name: str, overlay: bool) -> int:
+    if not name.startswith("sabotage-"):
+        raise Refuse("scratch worktree names must start with `sabotage-`")
+    wt = ctx.scratch_dir(name)
+    if wt.exists():
+        raise Refuse(f"{wt.relative_to(ctx.root)} already exists — `scratch remove` it first")
+    git.run(["worktree", "add", "--detach", str(wt), "HEAD"], ctx.root)
+    plant_deps(ctx, git, wt)
+    n = _overlay_dirty(ctx, git, wt) if overlay else 0
+    sha = git.out(["rev-parse", "HEAD"], wt)
+    print(f"scratch {wt.relative_to(ctx.root)} @ {sha[:12]} (overlaid {n})")
+    return 0
+
+
+def cmd_scratch_remove(ctx: Ctx, git: Git, name: str) -> int:
+    wt = ctx.scratch_dir(name)
+    if wt.exists():
+        git.run(["worktree", "remove", "--force", str(wt)], ctx.root, check=False)
+        if wt.exists():
+            shutil.rmtree(wt, ignore_errors=True)
+    git.run(["worktree", "prune"], ctx.root)
+    print(f"scratch {name} removed")
+    return 0
+
+
 def cmd_commit(ctx: Ctx, git: Git, leaf: str) -> int:
     brief, wave = leaf_wave(ctx, leaf)
     data = read_base(ctx, wave)
@@ -679,7 +729,8 @@ def _residual(ctx: Ctx, git: Git) -> list[tuple[str, str, str]]:
         if line.startswith("worktree ") and str(ctx.cdir / "worktrees") in line:
             path = line[9:]
             name = Path(path).name
-            kind = "integration" if name == "integration" else "leaf-worktree"
+            kind = ("integration" if name == "integration" else
+                    "scratch-worktree" if name.startswith("sabotage-") else "leaf-worktree")
             out.append((kind, name, path))
     for b in git.out(["branch", "--list", "--format=%(refname:short)", f"swarm/{ctx.slug}/**"], r).split():
         kind = ("integration" if b == ctx.int_branch else
@@ -704,7 +755,9 @@ def cmd_cleanup(ctx: Ctx, git: Git, purge: bool, yes: bool) -> int:
     rows = _residual(ctx, git)
     plan: list[str] = []
     for kind, name, path in rows:
-        if kind == "leaf-worktree":
+        if kind == "scratch-worktree":
+            plan.append(f"remove scratch worktree {path}")
+        elif kind == "leaf-worktree":
             plan.append(f"remove worktree {path}" + ("" if purge else " (refused/uncommitted — needs --purge)"))
         elif kind == "leaf-branch":
             plan.append(f"delete branch {name}" + ("" if purge else " (needs --purge)"))
@@ -725,7 +778,9 @@ def cmd_cleanup(ctx: Ctx, git: Git, purge: bool, yes: bool) -> int:
     if not yes:
         raise NeedsYes()
     for kind, name, path in rows:
-        if kind == "leaf-worktree" and purge:
+        if kind == "scratch-worktree":
+            git.run(["worktree", "remove", "--force", path], r)
+        elif kind == "leaf-worktree" and purge:
             git.run(["worktree", "remove", "--force", path], r)
         elif kind in ("leaf-branch", "reverted") and purge:
             git.run(["branch", "-D", name], r)
@@ -759,6 +814,8 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("revert"); common(s); s.add_argument("--leaf", required=True)
     s = sub.add_parser("sync"); common(s); s.add_argument("--yes", action="store_true")
     s = sub.add_parser("finish"); common(s); s.add_argument("--yes", action="store_true")
+    s = sub.add_parser("scratch"); common(s); s.add_argument("action", choices=["add", "remove"])
+    s.add_argument("--name", required=True); s.add_argument("--no-overlay", action="store_true")
     s = sub.add_parser("status"); common(s)
     s = sub.add_parser("cleanup"); common(s); s.add_argument("--purge", action="store_true")
     s.add_argument("--yes", action="store_true")
@@ -786,6 +843,10 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_sync(ctx, git, args.yes)
         if args.cmd == "finish":
             return cmd_finish(ctx, git, args.yes)
+        if args.cmd == "scratch":
+            if args.action == "add":
+                return cmd_scratch_add(ctx, git, args.name, not args.no_overlay)
+            return cmd_scratch_remove(ctx, git, args.name)
         if args.cmd == "status":
             return cmd_status(ctx, git)
         if args.cmd == "cleanup":

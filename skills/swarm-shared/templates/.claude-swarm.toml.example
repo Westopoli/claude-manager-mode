@@ -45,6 +45,12 @@ max_nesting     = 3    # per-function max block depth; 4th level flags, matching
                        # CodeClimate's nested-control-flow limit and Linux kernel
                        # style ("more than 3 levels, fix your program")
 
+[sabotage]
+# Phase 3.5 bug injection (degenerate-fake sweep + saboteur partial fakes).
+max_targets_per_leaf = 8      # extra targets are listed as uncapped, not dropped
+timeout_seconds      = 120    # per test-command run
+variants             = ["none", "const", "identity", "true"]
+
 [scale]
 # G10 growth bands, as the ratio cost(2N)/cost(N). Each sits at the geometric
 # midpoint between the complexity classes it separates, so a class jump fails

@@ -1,0 +1,3 @@
+briefs_dir = ".swarm/briefs/"
+type_contract_path = "src/contract.py"
+parent_owned = []

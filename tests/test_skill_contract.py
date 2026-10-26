@@ -253,6 +253,26 @@ class HardcoreContractTests(unittest.TestCase):
         for token in ("Phase 8", "POST-MORTEM.md", "batch-<NN>"):
             self.assertNotIn(token, HARDCORE, token)
 
+    def test_bug_injection_phase_runs_before_any_leaf_spawns(self) -> None:
+        required = (
+            "## Phase 3.5 — Bug injection", "degenerate_sweep.py", "sabotage_run.py",
+            "DEGENERATE-SWEEP.md", "SABOTAGE-BRIEF.md", "SABOTAGE.md", "OUT_OF_SCOPE",
+            "**Saboteur**", "that target only", "scratch remove", "Phase 3.5 is clean",
+            "no-sleep",
+        )
+        for token in required:
+            self.assertIn(token, REGULAR, token)
+        self.assertLess(REGULAR.index("## Phase 3.5"), REGULAR.index("## Phase 4 — Spawn leaves"))
+        self.assertIn("claude-sonnet-5-5", REGULAR[REGULAR.index("### 3.5.2"):REGULAR.index("### 3.5.3")])
+
+    def test_bug_injection_scripts_exist(self) -> None:
+        for name in ("degenerate_sweep.py", "sabotage_run.py", "test_results.py"):
+            self.assertTrue((ROOT / "skills/swarm-shared/scripts" / name).is_file(), name)
+
+    def test_hardcore_inherits_bug_injection(self) -> None:
+        self.assertIn("Phase 3.5", HARDCORE)
+        self.assertIn("does **not** re-trigger 3.4.1–3.4.2", HARDCORE)
+
 
 if __name__ == "__main__":
     unittest.main()
